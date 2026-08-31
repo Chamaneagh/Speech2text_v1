@@ -2040,5 +2040,9 @@ function showError(message) { errorElement.textContent = message; errorElement.h
 function clearError() { errorElement.textContent = ""; errorElement.hidden = true; }
 
 function registerServiceWorker() {
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker
+    .register("./sw.js")
+    .then((registration) => registration.update())
+    .catch(() => {});
 }
