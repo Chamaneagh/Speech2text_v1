@@ -1,9 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// For local development, the token broker runs on port 8787. Change these to
-// deployed HTTPS URLs before opening the app on an iPhone.
-const TOKEN_ENDPOINT = "http://localhost:8787/api/live-token";
-const TRANSLATE_ENDPOINT = "http://localhost:8787/api/translate";
+const TOKEN_ENDPOINT = "https://speech2text-broker.onrender.com/api/live-token";
+const TRANSLATE_ENDPOINT = "https://speech2text-broker.onrender.com/api/translate";
 const SUPABASE_URL = "https://jjdcjuxeuxbnxggxzbsl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_81wK9xZIlCC9CBukLWIu-g_yx851dCK";
 const MODEL = "gemini-3.5-transcribe-live";

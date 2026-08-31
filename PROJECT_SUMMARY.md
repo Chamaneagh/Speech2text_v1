@@ -156,8 +156,8 @@ Then grant microphone permission and test a short recording.
 The current PWA configuration is in `web/app.js`:
 
 ```javascript
-const TOKEN_ENDPOINT = "http://localhost:8787/api/live-token";
-const TRANSLATE_ENDPOINT = "http://localhost:8787/api/translate";
+const TOKEN_ENDPOINT = "https://speech2text-broker.onrender.com/api/live-token";
+const TRANSLATE_ENDPOINT = "https://speech2text-broker.onrender.com/api/translate";
 const MODEL = "gemini-3.5-transcribe-live";
 const TARGET_SAMPLE_RATE = 16_000;
 ```
@@ -170,7 +170,7 @@ The local URL will not work from the iPhone because `localhost` on the iPhone me
 
 1. Deploy the token broker to an HTTPS host.
 2. Deploy the `web/` files to an HTTPS host.
-3. Change `TOKEN_ENDPOINT` in `web/app.js` to the deployed HTTPS token endpoint.
+3. Keep `TOKEN_ENDPOINT` and `TRANSLATE_ENDPOINT` in `web/app.js` pointed at the deployed Render broker.
 4. Set the server's `WEB_ORIGIN` to the deployed PWA origin.
 5. Open the PWA in Safari on the iPhone.
 6. Add it to the Home Screen if desired.
