@@ -70,6 +70,8 @@ const UI_STRINGS = {
     notesTitle: "Notes",
     notesHint: "Saved automatically",
     notesPlaceholder: "Add notes while listening...",
+    editTranscriptSegment: "Edit transcript segment",
+    emptyTranscriptSegment: "A transcript segment cannot be empty.",
     rename: "Double-click to rename",
     renameAria: "Rename",
     deleteSubject: "Delete course",
@@ -190,6 +192,8 @@ const UI_STRINGS = {
     notesTitle: "Notes",
     notesHint: "Enregistrées automatiquement",
     notesPlaceholder: "Ajouter des notes pendant l'écoute...",
+    editTranscriptSegment: "Modifier ce passage de transcription",
+    emptyTranscriptSegment: "Un passage de transcription ne peut pas être vide.",
     rename: "Double-cliquer pour renommer",
     renameAria: "Renommer",
     deleteSubject: "Supprimer le cours",
@@ -1541,13 +1545,51 @@ function renderSegments() {
     transcriptElement.append(empty);
     return;
   }
+  const canEdit = !isListening && !isStopping;
   for (const segment of segments) {
+    if (canEdit) {
+      const textarea = document.createElement("textarea");
+      textarea.className = "transcript-segment transcript-edit";
+      textarea.value = segment.text;
+      textarea.rows = 1;
+      textarea.title = t("editTranscriptSegment");
+      textarea.setAttribute("aria-label", t("editTranscriptSegment"));
+      textarea.addEventListener("input", () => saveTranscriptSegmentEdit(segment.id, textarea));
+      textarea.addEventListener("blur", () => finishTranscriptSegmentEdit(textarea));
+      transcriptElement.append(textarea);
+      resizeTranscriptEdit(textarea);
+      continue;
+    }
+
     const paragraph = document.createElement("p");
     paragraph.className = "transcript-segment";
     paragraph.textContent = segment.text;
     transcriptElement.append(paragraph);
   }
   transcriptElement.parentElement.scrollTop = transcriptElement.parentElement.scrollHeight;
+}
+
+function saveTranscriptSegmentEdit(segmentId, textarea) {
+  resizeTranscriptEdit(textarea);
+  const session = getActiveSession();
+  const segment = session?.segments.find((item) => item.id === segmentId);
+  if (!session || !segment || !textarea.value.trim() || textarea.value === segment.text) return;
+
+  segment.text = textarea.value;
+  session.translations = {};
+  saveLibrary();
+  renderTranslationPanel();
+}
+
+function finishTranscriptSegmentEdit(textarea) {
+  if (textarea.value.trim()) return;
+  showError(t("emptyTranscriptSegment"));
+  renderSegments();
+}
+
+function resizeTranscriptEdit(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 function renderNotes() {
