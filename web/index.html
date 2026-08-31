@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0b1220">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="stylesheet" href="./styles.css">
+    <title>Speech2Text</title>
+  </head>
+  <body>
+    <div class="app-layout">
+      <aside class="course-sidebar" aria-label="Organisation des cours">
+        <div class="sidebar-header">
+          <h2 id="sidebar-title">Courses</h2>
+          <div class="language-switch" aria-label="Interface language">
+            <button id="ui-en" class="language-button" type="button" aria-label="English">EN</button>
+            <button id="ui-fr" class="language-button" type="button" aria-label="Français">🇫🇷</button>
+          </div>
+          <div class="workspace-bar">
+            <button id="active-workspace-title" class="workspace-title" type="button">My Workspace</button>
+            <button id="load-workspace" class="small-button" type="button">Load</button>
+          </div>
+        </div>
+        <div id="course-tree" class="course-tree"></div>
+      </aside>
+
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p id="active-subject-title" class="eyebrow">Course</p>
+          <h1 id="active-session-title">Lecture</h1>
+        </div>
+        <div class="header-side">
+          <div class="account-bar">
+            <span id="auth-state">Local mode</span>
+            <button id="auth-button" class="auth-button" type="button">Sign in</button>
+          </div>
+          <div id="status" class="status" data-state="idle">Prêt</div>
+          <div class="top-actions" aria-label="Lecture actions">
+            <button id="toggle" class="action-button primary-action" type="button">🎙️ Start</button>
+            <button id="copy-all" class="action-button secondary-action" type="button">⧉ Copy</button>
+            <button id="clear" class="action-button secondary-action" type="button">× Clear</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="transcript-card" aria-live="polite">
+        <button id="copy-original" class="copy-button transcript-copy" type="button" disabled>Copy</button>
+        <div id="transcript" class="transcript" aria-label="Transcript">
+          <p class="empty-state">The lecture transcript will appear here.</p>
+        </div>
+        <p id="interim" class="interim" hidden></p>
+      </section>
+
+      <section class="notes-panel" aria-label="Lecture notes">
+        <div class="notes-header">
+          <h2 id="notes-title">Notes</h2>
+          <span id="notes-hint">Saved automatically</span>
+        </div>
+        <textarea id="session-notes" class="notes-input" rows="4" placeholder="Add notes while listening..."></textarea>
+      </section>
+
+      <section class="translation-panel" aria-label="Transcript translation">
+        <p id="language" class="language-state">Detected language: unknown</p>
+        <div id="translate-actions" class="translation-actions"></div>
+        <div id="translations" class="translations"></div>
+      </section>
+
+      <p id="error" class="error" role="alert" hidden></p>
+      <details class="diagnostics">
+        <summary id="diagnostics-summary">Technical details</summary>
+        <pre id="diagnostics">Waiting for a session.</pre>
+      </details>
+      <p id="disclaimer" class="disclaimer">Captions are an aid and may contain errors.</p>
+    </main>
+    </div>
+    <dialog id="subject-dialog" class="modal">
+      <form id="subject-form" method="dialog" class="modal-card">
+        <h2 id="subject-dialog-title">New course</h2>
+        <label id="subject-name-label" for="subject-name">Course name</label>
+        <input id="subject-name" class="modal-input" type="text" autocomplete="off" required>
+        <div class="modal-actions">
+          <button id="subject-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="subject-create" class="primary-button" type="submit">Create</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="workspace-dialog" class="modal">
+      <form method="dialog" class="modal-card workspace-modal">
+        <h2 id="workspace-dialog-title">Load workspace</h2>
+        <div id="workspace-list" class="workspace-list"></div>
+        <div class="modal-actions">
+          <button id="new-workspace" class="secondary-button" type="button">New workspace</button>
+          <button id="workspace-close" class="primary-button" type="button">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="auth-dialog" class="modal">
+      <form id="auth-form" method="dialog" class="modal-card">
+        <h2 id="auth-title">Sign in</h2>
+        <p id="auth-description" class="modal-message">Use your account to save lectures online.</p>
+        <label id="auth-email-label" for="auth-email">Email</label>
+        <input id="auth-email" class="modal-input" type="email" autocomplete="email" required>
+        <label id="auth-password-label" for="auth-password">Password</label>
+        <input id="auth-password" class="modal-input" type="password" autocomplete="current-password" minlength="6" required>
+        <p id="auth-error" class="modal-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button id="auth-switch" class="link-button" type="button">Create account</button>
+          <button id="auth-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="auth-submit" class="primary-button" type="submit">Sign in</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="confirm-dialog" class="modal">
+      <form id="confirm-form" method="dialog" class="modal-card">
+        <h2 id="confirm-title">Confirm</h2>
+        <p id="confirm-message" class="modal-message"></p>
+        <div class="modal-actions">
+          <button id="confirm-cancel" class="secondary-button" type="button">Cancel</button>
+          <button id="confirm-ok" class="danger-button" type="submit">Delete</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

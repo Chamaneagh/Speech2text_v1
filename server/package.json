@@ -1,0 +1,12 @@
+{
+  "name": "speech2text-token-broker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "latest"
+  }
+}
+
