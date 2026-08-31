@@ -159,7 +159,7 @@ button { font: inherit; }
   flex: 1;
   min-height: 34px;
   margin-bottom: 6px;
-  padding: 7px 10px 7px 32px;
+  padding: 7px 10px;
   border-radius: 8px;
   background: transparent;
   color: #cbd5e1;
@@ -171,6 +171,7 @@ button { font: inherit; }
   display: flex;
   align-items: flex-start;
   gap: 4px;
+  margin-left: 32px;
 }
 
 .session-button[data-active="true"] {
@@ -358,7 +359,7 @@ button { font: inherit; }
 .session-edit {
   width: 100%;
   margin-bottom: 6px;
-  padding: 7px 10px 7px 32px;
+  padding: 7px 10px;
   font-size: .9rem;
 }
 
@@ -406,7 +407,17 @@ h1 { margin: 0; font-size: 1.8rem; }
 }
 .status { color: #bfdbfe; font-size: .9rem; }
 .status::before { content: "•"; color: #64748b; margin-right: 6px; }
+.status[data-state="connecting"]::before {
+  content: "◌";
+  color: #60a5fa;
+  display: inline-block;
+  animation: status-spin 1s linear infinite;
+}
 .status[data-state="listening"]::before { color: #f87171; }
+
+@keyframes status-spin {
+  to { transform: rotate(360deg); }
+}
 .top-actions {
   display: flex;
   justify-content: flex-end;

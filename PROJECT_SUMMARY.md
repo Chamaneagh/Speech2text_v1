@@ -44,6 +44,12 @@ The planned public deployment is:
 - Supabase for authentication and PostgreSQL data storage;
 - Render for the Node.js Gemini broker.
 
+The temporary Hostinger frontend URL is:
+
+```text
+https://floralwhite-pheasant-876581.hostingersite.com
+```
+
 The Supabase project is `https://jjdcjuxeuxbnxggxzbsl.supabase.co`. The frontend uses the modern publishable key format, never the service role key.
 
 Google references used by the implementation:

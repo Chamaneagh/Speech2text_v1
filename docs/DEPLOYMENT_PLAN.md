@@ -25,6 +25,12 @@ Supabase project URL:
 https://jjdcjuxeuxbnxggxzbsl.supabase.co
 ```
 
+Temporary Hostinger frontend URL:
+
+```text
+https://floralwhite-pheasant-876581.hostingersite.com
+```
+
 ## Why this split
 
 Hostinger Premium can host static sites and WordPress, but not a Node.js Web App. The current Gemini broker is Node.js and should stay server-side because it protects the permanent Gemini API key.
@@ -64,7 +70,7 @@ Required environment variables:
 
 ```text
 GEMINI_API_KEY=...
-WEB_ORIGIN=https://your-hostinger-domain.example
+WEB_ORIGIN=https://floralwhite-pheasant-876581.hostingersite.com
 SUPABASE_URL=https://jjdcjuxeuxbnxggxzbsl.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```

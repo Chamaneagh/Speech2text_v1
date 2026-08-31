@@ -1,4 +1,4 @@
-const CACHE_NAME = "speech2text-shell-v39";
+const CACHE_NAME = "speech2text-shell-v40";
 const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

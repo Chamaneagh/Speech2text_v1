@@ -37,12 +37,13 @@ const UI_STRINGS = {
     defaultSubject: "Courses",
     defaultSessionPrefix: "Lecture",
     noLectureSelected: "No lecture selected",
-    start: "🎙️ Start lecture",
-    startShort: "Start",
+    start: "🎙️ Rec",
+    startShort: "Rec",
     stop: "⏹️ Stop",
     stopShort: "Stop",
     ready: "Ready",
     connecting: "Connecting…",
+    microphonePrompt: "Waiting for microphone permission…",
     listening: "Listening",
     stopping: "Finalizing…",
     error: "Error",
@@ -156,12 +157,13 @@ const UI_STRINGS = {
     defaultSubject: "Cours",
     defaultSessionPrefix: "Cours",
     noLectureSelected: "Aucune séance sélectionnée",
-    start: "🎙️ Démarrer le cours",
-    startShort: "Démarrer",
+    start: "🎙️ Rec",
+    startShort: "Rec",
     stop: "⏹️ Arrêter",
     stopShort: "Arrêter",
     ready: "Prêt",
     connecting: "Connexion…",
+    microphonePrompt: "Autorisation micro en attente…",
     listening: "Écoute en cours",
     stopping: "Finalisation…",
     error: "Erreur",
@@ -395,6 +397,7 @@ async function startSession() {
   try {
     const token = await requestToken();
     await openSocket(token);
+    setStatus(t("microphonePrompt"), "connecting");
     await startAudioCapture();
     isListening = true;
     toggleButton.disabled = false;
