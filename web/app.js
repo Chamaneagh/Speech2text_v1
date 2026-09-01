@@ -8,6 +8,7 @@ const MODEL = "gemini-3.5-transcribe-live";
 const TARGET_SAMPLE_RATE = 16_000;
 const LIBRARY_KEY = "speech2text.library.v1";
 const UI_LANGUAGE_KEY = "speech2text.uiLanguage";
+const TEXT_SIZE_KEY = "speech2text.textSize";
 const LEGACY_SEGMENTS_KEY = "speech2text.segments";
 const LEGACY_TRANSLATIONS_KEY = `${LEGACY_SEGMENTS_KEY}.translations`;
 const FINAL_TRANSCRIPT_WAIT_MS = 3_500;
@@ -15,6 +16,8 @@ const QUIET_FINAL_WAIT_MS = 700;
 const TRANSLATION_TIMEOUT_MS = 30_000;
 const COPY_CONFIRMATION_MS = 1_200;
 const CLOUD_SYNC_DELAY_MS = 900;
+const LIVE_SESSION_ROTATE_MS = 8.5 * 60 * 1000;
+const MAX_QUEUED_AUDIO_CHUNKS = 120;
 const RECORDING_PREVIEW = new URLSearchParams(window.location.search).has("recordingPreview");
 const TRANSLATION_LANGUAGES = [
   { code: "en", label: "English" },
@@ -31,6 +34,10 @@ const UI_STRINGS = {
     activeWorkspace: "Active workspace",
     collapseCoursePanel: "Collapse courses",
     expandCoursePanel: "Show courses",
+    textSize: "Text size",
+    textSizeSmall: "Small text",
+    textSizeMedium: "Medium text",
+    textSizeLarge: "Large text",
     newCourse: "Add Course",
     newSession: "Add",
     addCourseTooltip: "Add a course to this workspace",
@@ -46,6 +53,7 @@ const UI_STRINGS = {
     ready: "Ready",
     connecting: "Connecting…",
     recordingPreparing: "Preparing recording…",
+    reconnecting: "Refreshing recording connection…",
     microphonePrompt: "Waiting for microphone permission…",
     listening: "Listening",
     stopping: "Finalizing…",
@@ -97,6 +105,10 @@ const UI_STRINGS = {
     socketError: "Gemini WebSocket error.",
     socketClosed: "WebSocket closed: code {code}{reason}.",
     interrupted: "The connection was interrupted.",
+    rotationStarted: "Refreshing Gemini session before the time limit.",
+    rotationReady: "Gemini session refreshed.",
+    reconnectFailed: "The recording connection could not be refreshed.",
+    audioBufferFlushed: "Buffered audio sent: {count} chunks.",
     tokenMissing: "The server did not provide a connection token.",
     emptyToken: "The connection token is empty.",
     connectFailed: "The connection could not be established.",
@@ -157,6 +169,10 @@ const UI_STRINGS = {
     activeWorkspace: "Workspace actif",
     collapseCoursePanel: "Replier les cours",
     expandCoursePanel: "Afficher les cours",
+    textSize: "Taille du texte",
+    textSizeSmall: "Petit texte",
+    textSizeMedium: "Texte moyen",
+    textSizeLarge: "Grand texte",
     newCourse: "Add Course",
     newSession: "Add",
     addCourseTooltip: "Ajouter un cours dans ce workspace",
@@ -172,6 +188,7 @@ const UI_STRINGS = {
     ready: "Prêt",
     connecting: "Connexion…",
     recordingPreparing: "Préparation de l’enregistrement…",
+    reconnecting: "Rafraîchissement de la connexion d’enregistrement…",
     microphonePrompt: "Autorisation micro en attente…",
     listening: "Écoute en cours",
     stopping: "Finalisation…",
@@ -223,6 +240,10 @@ const UI_STRINGS = {
     socketError: "Erreur WebSocket Gemini.",
     socketClosed: "WebSocket fermée: code {code}{reason}.",
     interrupted: "La connexion a été interrompue.",
+    rotationStarted: "Rafraîchissement de la session Gemini avant la limite de temps.",
+    rotationReady: "Session Gemini rafraîchie.",
+    reconnectFailed: "La connexion d’enregistrement n’a pas pu être rafraîchie.",
+    audioBufferFlushed: "Audio mis en attente envoyé: {count} blocs.",
     tokenMissing: "Le serveur n’a pas fourni de jeton de connexion.",
     emptyToken: "Le jeton de connexion est vide.",
     connectFailed: "La connexion n’a pas pu être établie.",
@@ -288,6 +309,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 const toggleButton = document.querySelector("#toggle");
 const copyAllButton = document.querySelector("#copy-all");
 const clearButton = document.querySelector("#clear");
+const textSizeSmallButton = document.querySelector("#text-size-small");
+const textSizeMediumButton = document.querySelector("#text-size-medium");
+const textSizeLargeButton = document.querySelector("#text-size-large");
 const coursePanelElement = document.querySelector("#course-panel");
 const coursePanelToggleButton = document.querySelector("#course-panel-toggle");
 const coursePanelSummaryButton = document.querySelector("#course-panel-summary");
@@ -357,8 +381,14 @@ let processor;
 let silentOutput;
 let isListening = false;
 let isStopping = false;
+let isRotatingConnection = false;
+let stopAfterRotation = false;
+let audioSendPaused = false;
 let stopWaiter;
 let hasPendingInterim = false;
+let rotationTimer;
+let queuedAudioChunks = [];
+let plannedSocketCloses = new WeakSet();
 let diagnosticLines = [];
 let translatingTo = "";
 let pendingSessionSelect;
@@ -372,6 +402,7 @@ let isCoursePanelCollapsed = false;
 let transcriptEditTimer;
 let wakeLock;
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
+let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
 let library = loadLibrary();
 
 renderAll();
@@ -382,6 +413,9 @@ initializeAuth();
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
 copyAllButton.addEventListener("click", copyFullTranscript);
 clearButton.addEventListener("click", clearTranscript);
+textSizeSmallButton.addEventListener("click", () => setTextSize("small"));
+textSizeMediumButton.addEventListener("click", () => setTextSize("medium"));
+textSizeLargeButton.addEventListener("click", () => setTextSize("large"));
 coursePanelToggleButton.addEventListener("click", () => setCoursePanelCollapsed(true));
 coursePanelSummaryButton.addEventListener("click", () => setCoursePanelCollapsed(false));
 newWorkspaceButton.addEventListener("click", openWorkspaceDialog);
@@ -424,6 +458,7 @@ async function startSession() {
     setStatus(t("connecting"), "connecting");
     const token = await requestToken();
     await openSocket(token);
+    flushQueuedAudio();
     await requestScreenWakeLock();
     isListening = true;
     toggleButton.disabled = false;
@@ -433,7 +468,9 @@ async function startSession() {
     renderLibrary();
     setStatus(t("listening"), "listening");
     hideActivity();
+    scheduleConnectionRotation();
   } catch (error) {
+    clearConnectionRotationTimer();
     hideActivity();
     await releaseScreenWakeLock();
     await cleanupAudio();
@@ -447,9 +484,18 @@ async function startSession() {
 }
 
 async function stopSession() {
+  if (isRotatingConnection) {
+    stopAfterRotation = true;
+    toggleButton.disabled = true;
+    setStatus(t("stopping"), "stopping");
+    return;
+  }
   if (isStopping) return;
   isStopping = true;
   toggleButton.disabled = true;
+  clearConnectionRotationTimer();
+  audioSendPaused = false;
+  queuedAudioChunks = [];
   setStatus(t("stopping"), "stopping");
 
   await cleanupAudio();
@@ -472,6 +518,11 @@ function resetControls() {
   hideInterimTranscript();
   setStatus(t("ready"), "idle");
   hideActivity();
+  clearConnectionRotationTimer();
+  audioSendPaused = false;
+  queuedAudioChunks = [];
+  plannedSocketCloses = new WeakSet();
+  stopAfterRotation = false;
   renderLibrary();
   renderSegments();
   renderTranslationPanel();
@@ -503,7 +554,63 @@ function waitForFinalTranscription(waitMs) {
   });
 }
 
+function scheduleConnectionRotation() {
+  clearConnectionRotationTimer();
+  if (!isListening || isStopping) return;
+  rotationTimer = window.setTimeout(rotateGeminiConnection, LIVE_SESSION_ROTATE_MS);
+}
+
+function clearConnectionRotationTimer() {
+  window.clearTimeout(rotationTimer);
+  rotationTimer = undefined;
+}
+
+async function rotateGeminiConnection() {
+  if (!isListening || isStopping || isRotatingConnection) return;
+  isRotatingConnection = true;
+  audioSendPaused = true;
+  toggleButton.disabled = true;
+  setStatus(t("reconnecting"), "connecting");
+  showActivity(t("reconnecting"));
+  addDiagnostic(t("rotationStarted"));
+
+  try {
+    await finishTranscription();
+    const previousSocket = socket;
+    socket = undefined;
+    if (previousSocket?.readyState === WebSocket.OPEN || previousSocket?.readyState === WebSocket.CONNECTING) {
+      plannedSocketCloses.add(previousSocket);
+      previousSocket.close();
+    }
+
+    const token = await requestToken();
+    await openSocket(token);
+    audioSendPaused = false;
+    flushQueuedAudio();
+    addDiagnostic(t("rotationReady"));
+
+    if (stopAfterRotation) {
+      stopAfterRotation = false;
+      isRotatingConnection = false;
+      await stopSession();
+      return;
+    }
+
+    toggleButton.disabled = false;
+    setStatus(t("listening"), "listening");
+    hideActivity();
+    scheduleConnectionRotation();
+  } catch (error) {
+    addDiagnostic(`${t("reconnectFailed")} ${error.message ?? ""}`.trim());
+    showError(error.message || t("reconnectFailed"));
+    await handleUnexpectedClose();
+  } finally {
+    isRotatingConnection = false;
+  }
+}
+
 async function handleUnexpectedClose() {
+  clearConnectionRotationTimer();
   await cleanupAudio();
   await releaseScreenWakeLock();
   socket = undefined;
@@ -545,11 +652,12 @@ function openSocket(token) {
       "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained"
     );
     endpoint.searchParams.set("access_token", token);
-    socket = new WebSocket(endpoint);
+    const connectionSocket = new WebSocket(endpoint);
+    socket = connectionSocket;
 
-    socket.onopen = () => {
+    connectionSocket.onopen = () => {
       addDiagnostic(t("socketOpen"));
-      sendJSON({
+      sendJSONToSocket(connectionSocket, {
         setup: {
           model: `models/${MODEL}`,
           generationConfig: { responseModalities: ["TEXT"] },
@@ -558,7 +666,7 @@ function openSocket(token) {
       });
       resolve();
     };
-    socket.onmessage = async (event) => {
+    connectionSocket.onmessage = async (event) => {
       const data = await readMessageData(event.data);
       const message = parseMessage(data);
       if (!message) {
@@ -567,13 +675,17 @@ function openSocket(token) {
       }
       handleMessage(message);
     };
-    socket.onerror = () => {
+    connectionSocket.onerror = () => {
       addDiagnostic(t("socketError"));
       reject(new Error(t("socketError")));
     };
-    socket.onclose = (event) => {
+    connectionSocket.onclose = (event) => {
       addDiagnostic(t("socketClosed", { code: event.code, reason: event.reason ? `, ${event.reason}` : "" }));
       stopWaiter?.();
+      if (plannedSocketCloses.has(connectionSocket)) {
+        plannedSocketCloses.delete(connectionSocket);
+        return;
+      }
       if (isListening && !isStopping) handleUnexpectedClose();
     };
   });
@@ -595,14 +707,13 @@ async function startAudioCapture() {
   silentOutput.gain.value = 0;
 
   processor.onaudioprocess = (event) => {
-    if (socket?.readyState !== WebSocket.OPEN) return;
     const input = event.inputBuffer.getChannelData(0);
     const pcm = resampleAndEncode(input, audioContext.sampleRate, TARGET_SAMPLE_RATE);
-    sendJSON({
-      realtimeInput: {
-        audio: { data: pcm, mimeType: "audio/pcm;rate=16000" }
-      }
-    });
+    if (audioSendPaused || socket?.readyState !== WebSocket.OPEN) {
+      queueAudioChunk(pcm);
+      return;
+    }
+    sendAudioChunk(pcm);
   };
 
   audioSource.connect(processor);
@@ -859,6 +970,7 @@ function renderInterfaceText() {
   if (!isListening && !isStopping) setActionButton(toggleButton, "🎙️", t("startShort"));
   setActionButton(copyAllButton, "⧉", t("copyAllShort"));
   setActionButton(clearButton, "⌫", t("clearShort"));
+  renderTextSizeControl();
   diagnosticsSummaryElement.textContent = t("technicalDetails");
   if (!diagnosticLines.length) diagnosticsElement.textContent = t("waiting");
   disclaimerElement.textContent = t("disclaimer");
@@ -905,6 +1017,28 @@ function setInterfaceLanguage(language) {
   localStorage.setItem(UI_LANGUAGE_KEY, uiLanguage);
   scheduleCloudSync();
   renderAll();
+}
+
+function renderTextSizeControl() {
+  document.body.dataset.textSize = textSize;
+  const buttons = [
+    [textSizeSmallButton, "small", "textSizeSmall"],
+    [textSizeMediumButton, "medium", "textSizeMedium"],
+    [textSizeLargeButton, "large", "textSizeLarge"]
+  ];
+
+  for (const [button, size, labelKey] of buttons) {
+    button.dataset.active = textSize === size ? "true" : "false";
+    button.title = t(labelKey);
+    button.setAttribute("aria-label", t(labelKey));
+    button.setAttribute("aria-pressed", textSize === size ? "true" : "false");
+  }
+}
+
+function setTextSize(size) {
+  textSize = normalizeTextSize(size);
+  localStorage.setItem(TEXT_SIZE_KEY, textSize);
+  renderTextSizeControl();
 }
 
 function t(key, values = {}) {
@@ -2037,6 +2171,10 @@ function normalizeLanguageCode(languageCode) {
   return languageCode.toLowerCase().split("-")[0];
 }
 
+function normalizeTextSize(size) {
+  return ["small", "medium", "large"].includes(size) ? size : "medium";
+}
+
 function getLanguageLabel(languageCode) {
   const normalized = normalizeLanguageCode(languageCode);
   return TRANSLATION_LANGUAGES.find((language) => language.code === normalized)?.label ?? languageCode;
@@ -2215,6 +2353,27 @@ function summarizeMessage(rawMessage) {
   return `${rawMessage.slice(0, 220)}…`;
 }
 
+function queueAudioChunk(data) {
+  queuedAudioChunks.push(data);
+  if (queuedAudioChunks.length > MAX_QUEUED_AUDIO_CHUNKS) queuedAudioChunks.shift();
+}
+
+function flushQueuedAudio() {
+  if (socket?.readyState !== WebSocket.OPEN || !queuedAudioChunks.length) return;
+  const chunks = queuedAudioChunks;
+  queuedAudioChunks = [];
+  for (const chunk of chunks) sendAudioChunk(chunk);
+  addDiagnostic(t("audioBufferFlushed", { count: chunks.length }));
+}
+
+function sendAudioChunk(data) {
+  sendJSON({
+    realtimeInput: {
+      audio: { data, mimeType: "audio/pcm;rate=16000" }
+    }
+  });
+}
+
 function addDiagnostic(message) {
   const time = new Date().toLocaleTimeString("fr-FR");
   diagnosticLines = [...diagnosticLines.slice(-11), `[${time}] ${message}`];
@@ -2223,6 +2382,10 @@ function addDiagnostic(message) {
 
 function sendJSON(value) {
   socket?.send(JSON.stringify(value));
+}
+
+function sendJSONToSocket(targetSocket, value) {
+  targetSocket?.send(JSON.stringify(value));
 }
 
 function resampleAndEncode(input, inputRate, outputRate) {

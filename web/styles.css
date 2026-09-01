@@ -517,6 +517,29 @@ h1 { margin: 0; font-size: 1.8rem; overflow-wrap: anywhere; }
   gap: 8px;
   flex-wrap: wrap;
 }
+.text-size-control {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid rgba(96, 165, 250, .2);
+  border-radius: 8px;
+  background: #111827;
+}
+.text-size-button {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: .76rem;
+  font-weight: 900;
+}
+.text-size-button + .text-size-button {
+  border-left: 1px solid rgba(96, 165, 250, .16);
+}
+.text-size-button[data-active="true"] {
+  background: #2563eb;
+  color: #fff;
+}
 .action-button {
   display: inline-flex;
   align-items: center;
@@ -570,6 +593,24 @@ h1 { margin: 0; font-size: 1.8rem; overflow-wrap: anywhere; }
   line-height: 1.48;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+body[data-text-size="small"] .transcript-segment,
+body[data-text-size="small"] .transcript-edit,
+body[data-text-size="small"] .interim-inline,
+body[data-text-size="small"] .translation-result p {
+  font-size: .9rem;
+}
+body[data-text-size="medium"] .transcript-segment,
+body[data-text-size="medium"] .transcript-edit,
+body[data-text-size="medium"] .interim-inline,
+body[data-text-size="medium"] .translation-result p {
+  font-size: 1rem;
+}
+body[data-text-size="large"] .transcript-segment,
+body[data-text-size="large"] .transcript-edit,
+body[data-text-size="large"] .interim-inline,
+body[data-text-size="large"] .translation-result p {
+  font-size: 1.15rem;
 }
 .transcript-edit {
   display: block;
@@ -914,6 +955,11 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .text-size-control {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
   .action-button {
     min-width: 0;
   }
@@ -1033,11 +1079,16 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
   body[data-recording="true"] .top-actions {
     gap: 6px;
-    grid-template-columns: 1fr;
+    grid-template-columns: auto 1fr;
+    align-items: stretch;
   }
 
   body[data-recording="true"] .secondary-action {
     display: none;
+  }
+
+  body[data-recording="true"] .text-size-control {
+    grid-column: auto;
   }
 
   body[data-recording="true"] .action-button {

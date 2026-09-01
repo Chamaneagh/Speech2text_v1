@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=50">
+    <link rel="stylesheet" href="./styles.css?v=53">
     <title>Speech2Text</title>
   </head>
   <body>
@@ -45,6 +45,11 @@
           </div>
           <div id="status" class="status" data-state="idle">Prêt</div>
           <div class="top-actions" aria-label="Lecture actions">
+            <div class="text-size-control" role="group" aria-label="Text size">
+              <button id="text-size-small" class="text-size-button" type="button">A−</button>
+              <button id="text-size-medium" class="text-size-button" type="button">A</button>
+              <button id="text-size-large" class="text-size-button" type="button">A+</button>
+            </div>
             <button id="toggle" class="action-button primary-action" type="button">🎙️ Start</button>
             <button id="copy-all" class="action-button secondary-action" type="button">⧉ Copy</button>
             <button id="clear" class="action-button secondary-action" type="button">× Clear</button>
@@ -133,6 +138,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=50"></script>
+    <script type="module" src="./app.js?v=53"></script>
   </body>
 </html>
