@@ -18,6 +18,7 @@ const TRANSLATION_TIMEOUT_MS = 30_000;
 const SUMMARY_TIMEOUT_MS = 60_000;
 const COPY_CONFIRMATION_MS = 1_200;
 const CLOUD_SYNC_DELAY_MS = 900;
+const LIVE_SAVE_DELAY_MS = 1_500;
 const LIVE_SESSION_ROTATE_MS = 8.5 * 60 * 1000;
 const MAX_QUEUED_AUDIO_CHUNKS = 120;
 const RECORDING_PREVIEW = new URLSearchParams(window.location.search).has("recordingPreview");
@@ -66,7 +67,12 @@ const UI_STRINGS = {
     copyAllShort: "Copy",
     clear: "Clear text",
     clearShort: "Clear",
+    originalTab: "Original",
+    foldTranscript: "Collapse transcript",
+    unfoldTranscript: "Show transcript",
+    foldedTranscript: "{label} · {count} characters",
     empty: "The lecture transcript will appear here.",
+    emptyTranslation: "Choose a language to generate a translation.",
     detectedUnknown: "Detected language: unknown",
     detectedMixed: "Detected language: mixed",
     detected: "Detected language: {language}",
@@ -215,7 +221,12 @@ const UI_STRINGS = {
     copyAllShort: "Copier",
     clear: "Effacer le texte",
     clearShort: "Effacer",
+    originalTab: "Original",
+    foldTranscript: "Replier la transcription",
+    unfoldTranscript: "Afficher la transcription",
+    foldedTranscript: "{label} · {count} caractères",
     empty: "Les paroles du professeur apparaîtront ici.",
+    emptyTranslation: "Choisis une langue pour générer une traduction.",
     detectedUnknown: "Langue détectée: inconnue",
     detectedMixed: "Langue détectée: mixte",
     detected: "Langue détectée: {language}",
@@ -356,11 +367,11 @@ const sidebarTitleElement = document.querySelector("#sidebar-title");
 const statusElement = document.querySelector("#status");
 const transcriptElement = document.querySelector("#transcript");
 const interimElement = document.querySelector("#interim");
+const transcriptFoldButton = document.querySelector("#transcript-fold");
+const transcriptFoldSummaryElement = document.querySelector("#transcript-fold-summary");
 const errorElement = document.querySelector("#error");
 const diagnosticsElement = document.querySelector("#diagnostics");
-const languageElement = document.querySelector("#language");
-const translateActionsElement = document.querySelector("#translate-actions");
-const translationsElement = document.querySelector("#translations");
+const transcriptTabButtons = [...document.querySelectorAll("[data-transcript-tab]")];
 const courseTreeElement = document.querySelector("#course-tree");
 const activeSubjectTitleElement = document.querySelector("#active-subject-title");
 const activeSessionTitleElement = document.querySelector("#active-session-title");
@@ -374,7 +385,7 @@ const sessionNotesElement = document.querySelector("#session-notes");
 const summaryTitleElement = document.querySelector("#summary-title");
 const summaryHintElement = document.querySelector("#summary-hint");
 const sessionSummaryElement = document.querySelector("#session-summary");
-const generateSummaryButton = document.querySelector("#generate-summary");
+const summaryLanguageButtons = [...document.querySelectorAll("[data-summary-language]")];
 const copySummaryButton = document.querySelector("#copy-summary");
 const subjectDialog = document.querySelector("#subject-dialog");
 const subjectForm = document.querySelector("#subject-form");
@@ -426,12 +437,15 @@ let queuedAudioChunks = [];
 let plannedSocketCloses = new WeakSet();
 let diagnosticLines = [];
 let translatingTo = "";
-let isSummarizing = false;
+let summarizingTo = "";
+let activeTranscriptTab = "original";
+let isTranscriptFolded = false;
 let pendingSessionSelect;
 let authSession;
 let authMode = "signIn";
 let dialogMode = "subject";
 let syncTimer;
+let localSaveTimer;
 let isSyncingCloud = false;
 let isApplyingCloudLibrary = false;
 let isCoursePanelCollapsed = false;
@@ -449,6 +463,10 @@ initializeAuth();
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
 copyAllButton.addEventListener("click", copyFullTranscript);
 clearButton.addEventListener("click", clearTranscript);
+transcriptFoldButton.addEventListener("click", toggleTranscriptFold);
+for (const button of transcriptTabButtons) {
+  button.addEventListener("click", () => selectTranscriptTab(button.dataset.transcriptTab));
+}
 textSizeSmallButton.addEventListener("click", () => setTextSize("small"));
 textSizeMediumButton.addEventListener("click", () => setTextSize("medium"));
 textSizeLargeButton.addEventListener("click", () => setTextSize("large"));
@@ -468,7 +486,9 @@ subjectCancelButton.addEventListener("click", () => subjectDialog.close());
 subjectForm.addEventListener("submit", createSubjectFromDialog);
 sessionNotesElement.addEventListener("input", saveSessionNotes);
 sessionSummaryElement.addEventListener("input", saveSessionSummary);
-generateSummaryButton.addEventListener("click", generateSummary);
+for (const button of summaryLanguageButtons) {
+  button.addEventListener("click", () => selectSummaryLanguage(button.dataset.summaryLanguage));
+}
 copySummaryButton.addEventListener("click", copySummary);
 authButton.addEventListener("click", handleAuthButton);
 authForm.addEventListener("submit", handleAuthSubmit);
@@ -485,6 +505,8 @@ async function startSession() {
   ensureActiveSession({ createSessionIfMissing: true });
   revealActiveSubject();
   setCoursePanelCollapsed(true);
+  activeTranscriptTab = "original";
+  isTranscriptFolded = false;
   renderAll();
   toggleButton.disabled = true;
   setRecordingLayout(true);
@@ -540,6 +562,7 @@ async function stopSession() {
   await cleanupAudio();
   await finishTranscription();
   await releaseScreenWakeLock();
+  flushLocalLibrarySave();
 
   socket?.close();
   socket = undefined;
@@ -564,7 +587,7 @@ function resetControls() {
   stopAfterRotation = false;
   renderLibrary();
   renderSegments();
-  renderTranslationPanel();
+  renderTranscriptTabs();
 }
 
 function setRecordingLayout(isRecording) {
@@ -826,18 +849,20 @@ function handleMessage(message) {
     const session = getActiveSession();
     if (!session) return;
     const sourceLanguage = normalizeLanguageCode(content.inputTranscription.languageCode);
-    hasPendingInterim = false;
-    addDiagnostic(t("finalReceived", { count: finalized.length, language: sourceLanguage ? ` (${sourceLanguage})` : "" }));
-    session.segments.push({
+    const segment = {
       id: crypto.randomUUID(),
       text: finalized,
       sourceLanguage,
       createdAt: new Date().toISOString()
-    });
+    };
+    hasPendingInterim = false;
+    addDiagnostic(t("finalReceived", { count: finalized.length, language: sourceLanguage ? ` (${sourceLanguage})` : "" }));
+    session.segments.push(segment);
     session.translations = {};
-    saveLibrary();
-    renderAll();
     hideInterimTranscript();
+    appendTranscriptSegment(segment);
+    saveLibrary({ defer: true });
+    renderTranscriptTabs();
     stopWaiter?.();
   }
 
@@ -946,6 +971,8 @@ function createSessionRecord() {
     segments: [],
     notes: "",
     summary: "",
+    summaryLanguage: uiLanguage,
+    summaries: {},
     translations: {}
   };
 }
@@ -998,7 +1025,7 @@ function renderAll() {
   renderSegments();
   renderNotes();
   renderSummary();
-  renderTranslationPanel();
+  renderTranscriptTabs();
 }
 
 function renderInterfaceText() {
@@ -1011,6 +1038,7 @@ function renderInterfaceText() {
   if (!isListening && !isStopping) setActionButton(toggleButton, "🎙️", t("startShort"));
   setActionButton(copyAllButton, "⧉", t("copyAllShort"));
   setActionButton(clearButton, "⌫", t("clearShort"));
+  renderTranscriptTabs();
   renderTextSizeControl();
   diagnosticsSummaryElement.textContent = t("technicalDetails");
   if (!diagnosticLines.length) diagnosticsElement.textContent = t("waiting");
@@ -1284,6 +1312,8 @@ function applyCloudLibrary({ workspaces, courses, sessions, segments, translatio
         createdAt: session.created_at,
         notes: session.notes ?? "",
         summary: session.summary ?? "",
+        summaryLanguage: session.summary_language ?? uiLanguage,
+        summaries: normalizeSummaries(session.summaries, session.summary, session.summary_language),
         segments: (segmentsBySession.get(session.id) ?? []).map((segment) => ({
           id: segment.id,
           text: segment.text,
@@ -1381,6 +1411,8 @@ async function syncLibraryToCloud({ announce = true } = {}) {
             title: session.title,
             notes: session.notes ?? "",
             summary: session.summary ?? "",
+            summary_language: getActiveSummaryLanguage(session),
+            summaries: normalizeSummaries(session.summaries, session.summary, session.summaryLanguage),
             sort_order: sessionIndex,
             created_at: session.createdAt
           });
@@ -1827,9 +1859,38 @@ function startInlineEdit(target, currentValue, onCommit) {
 function renderSegments() {
   const segments = getSegments();
   const activeInterim = getActiveInterimText();
+  const session = getActiveSession();
+  const activeTranslation = activeTranscriptTab === "original" ? "" : session?.translations?.[activeTranscriptTab] ?? "";
+  renderTranscriptFoldState();
   transcriptElement.replaceChildren();
-  copyAllButton.disabled = segments.length === 0;
+  copyAllButton.disabled = !getActiveTranscriptText().trim();
   clearButton.disabled = segments.length === 0;
+
+  if (isTranscriptFolded) return;
+
+  if (activeTranscriptTab !== "original") {
+    if (translatingTo === activeTranscriptTab) {
+      const loading = document.createElement("p");
+      loading.className = "empty-state";
+      loading.textContent = t("translating", { language: getLanguageLabel(activeTranscriptTab) });
+      transcriptElement.append(loading);
+      return;
+    }
+
+    if (activeTranslation) {
+      const paragraph = document.createElement("p");
+      paragraph.className = "transcript-segment translation-text";
+      paragraph.textContent = activeTranslation;
+      transcriptElement.append(paragraph);
+      return;
+    }
+
+    const emptyTranslation = document.createElement("p");
+    emptyTranslation.className = "empty-state";
+    emptyTranslation.textContent = t("emptyTranslation");
+    transcriptElement.append(emptyTranslation);
+    return;
+  }
 
   if (!segments.length && !activeInterim) {
     const empty = document.createElement("p");
@@ -1860,6 +1921,89 @@ function renderSegments() {
     transcriptElement.append(paragraph);
   }
   if (activeInterim) showInterimTranscript(activeInterim);
+  transcriptElement.parentElement.scrollTop = transcriptElement.parentElement.scrollHeight;
+}
+
+function renderTranscriptTabs() {
+  const session = getActiveSession();
+  const sourceLanguage = getSourceLanguageForTranslation();
+  if (activeTranscriptTab !== "original" && !TRANSLATION_LANGUAGES.some((language) => language.code === activeTranscriptTab)) {
+    activeTranscriptTab = "original";
+  }
+
+  for (const button of transcriptTabButtons) {
+    const tab = button.dataset.transcriptTab;
+    const isOriginal = tab === "original";
+    const hasTranslation = !isOriginal && Boolean(session?.translations?.[tab]);
+    button.textContent = isOriginal ? t("originalTab") : getLanguageLabel(tab);
+    button.dataset.active = activeTranscriptTab === tab ? "true" : "false";
+    button.dataset.ready = isOriginal || hasTranslation ? "true" : "false";
+    button.disabled = isListening || isStopping || translatingTo || (!isOriginal && !getSegments().length) || (!isOriginal && sourceLanguage !== "mixed" && sourceLanguage === tab);
+    button.title = isOriginal || hasTranslation
+      ? button.textContent
+      : t("translationRequested", { language: getLanguageLabel(tab) });
+    button.setAttribute("aria-pressed", activeTranscriptTab === tab ? "true" : "false");
+  }
+  renderTranscriptFoldState();
+}
+
+function renderTranscriptFoldState() {
+  if (isListening || isStopping) isTranscriptFolded = false;
+  const activeText = getActiveTranscriptText().trim();
+  const activeLabel = activeTranscriptTab === "original" ? t("originalTab") : getLanguageLabel(activeTranscriptTab);
+  transcriptFoldButton.disabled = isListening || isStopping || (!activeText && !getActiveInterimText());
+  transcriptFoldButton.textContent = isTranscriptFolded ? "▾" : "▴";
+  transcriptFoldButton.title = t(isTranscriptFolded ? "unfoldTranscript" : "foldTranscript");
+  transcriptFoldButton.setAttribute("aria-label", transcriptFoldButton.title);
+  transcriptFoldButton.setAttribute("aria-expanded", isTranscriptFolded ? "false" : "true");
+  transcriptFoldSummaryElement.hidden = !isTranscriptFolded;
+  transcriptFoldSummaryElement.textContent = t("foldedTranscript", {
+    label: activeLabel,
+    count: String(activeText.length)
+  });
+  transcriptElement.hidden = isTranscriptFolded;
+}
+
+function toggleTranscriptFold() {
+  if (isListening || isStopping) return;
+  isTranscriptFolded = !isTranscriptFolded;
+  renderTranscriptFoldState();
+  renderSegments();
+}
+
+async function selectTranscriptTab(tab) {
+  if (isListening || isStopping || translatingTo) return;
+  if (tab === "original") {
+    activeTranscriptTab = "original";
+    renderTranscriptTabs();
+    renderSegments();
+    return;
+  }
+
+  const session = getActiveSession();
+  if (!session?.segments.length) return;
+  const sourceLanguage = getSourceLanguageForTranslation();
+  if (sourceLanguage !== "mixed" && sourceLanguage === tab) return;
+
+  activeTranscriptTab = normalizeLanguageCode(tab);
+  renderTranscriptTabs();
+  renderSegments();
+  if (!session.translations?.[activeTranscriptTab]) await translateTranscript(activeTranscriptTab);
+}
+
+function appendTranscriptSegment(segment) {
+  if (!isListening || isStopping) {
+    renderSegments();
+    return;
+  }
+
+  transcriptElement.querySelector(".empty-state")?.remove();
+  const paragraph = document.createElement("p");
+  paragraph.className = "transcript-segment";
+  paragraph.textContent = segment.text;
+  transcriptElement.append(paragraph);
+  copyAllButton.disabled = false;
+  clearButton.disabled = false;
   transcriptElement.parentElement.scrollTop = transcriptElement.parentElement.scrollHeight;
 }
 
@@ -1918,7 +2062,8 @@ function saveTranscriptEdit(value) {
   session.translations = {};
   clearError();
   saveLibrary();
-  renderTranslationPanel();
+  activeTranscriptTab = "original";
+  renderTranscriptTabs();
   return true;
 }
 
@@ -1943,27 +2088,35 @@ function saveSessionNotes() {
 function renderSummary() {
   const session = getActiveSession();
   const hasTranscript = getSegments().length > 0;
-  const summary = session?.summary ?? "";
+  const summaryLanguage = getActiveSummaryLanguage(session);
+  const summary = getSummaryText(session, summaryLanguage);
   sessionSummaryElement.value = summary;
-  sessionSummaryElement.disabled = !session || isListening || isStopping || isSummarizing;
-  generateSummaryButton.disabled = !session || !hasTranscript || isListening || isStopping || isSummarizing;
-  copySummaryButton.disabled = !summary.trim() || isSummarizing;
-  generateSummaryButton.textContent = isSummarizing
-    ? t("summaryGenerating")
-    : summary.trim()
-    ? t("regenerateSummary")
-    : t("generateSummary");
+  sessionSummaryElement.disabled = !session || isListening || isStopping || Boolean(summarizingTo);
+  copySummaryButton.disabled = !summary.trim() || Boolean(summarizingTo);
+
+  for (const button of summaryLanguageButtons) {
+    const language = button.dataset.summaryLanguage;
+    button.textContent = summarizingTo === language ? "..." : getLanguageLabel(language);
+    button.disabled = !session || !hasTranscript || isListening || isStopping || Boolean(summarizingTo);
+    button.dataset.active = summaryLanguage === language ? "true" : "false";
+    button.title = `${t("generateSummary")} - ${getLanguageLabel(language)}`;
+    button.setAttribute("aria-pressed", summaryLanguage === language ? "true" : "false");
+  }
 }
 
 function saveSessionSummary() {
   const session = getActiveSession();
   if (!session) return;
+  const language = getActiveSummaryLanguage(session);
+  const summaries = getSessionSummaries(session);
+  summaries[language] = sessionSummaryElement.value;
   session.summary = sessionSummaryElement.value;
+  session.summaryLanguage = language;
   saveLibrary();
-  copySummaryButton.disabled = !session.summary.trim();
+  copySummaryButton.disabled = !sessionSummaryElement.value.trim();
 }
 
-async function generateSummary() {
+async function generateSummary(targetLanguage = uiLanguage) {
   clearError();
   if (!authSession?.access_token) {
     showError(t("signInRequired"));
@@ -1976,7 +2129,9 @@ async function generateSummary() {
   const text = getTranscriptText().trim();
   if (!session || !subject || !text) return;
 
-  isSummarizing = true;
+  const normalizedTargetLanguage = normalizeLanguageCode(targetLanguage) || uiLanguage;
+  session.summaryLanguage = normalizedTargetLanguage;
+  summarizingTo = normalizedTargetLanguage;
   setStatus(t("summaryGenerating"), "connecting");
   addDiagnostic(t("summaryRequested"));
   renderSummary();
@@ -1991,7 +2146,7 @@ async function generateSummary() {
       signal: controller.signal,
       body: JSON.stringify({
         text,
-        targetLanguage: uiLanguage,
+        targetLanguage: normalizedTargetLanguage,
         courseTitle: subject.name,
         sessionTitle: session.title
       })
@@ -2002,7 +2157,10 @@ async function generateSummary() {
       throw new Error(result.error || t("summaryFailed"));
     }
 
+    const summaries = getSessionSummaries(session);
+    summaries[normalizedTargetLanguage] = result.summary;
     session.summary = result.summary;
+    session.summaryLanguage = normalizedTargetLanguage;
     saveLibrary();
     addDiagnostic(t("summaryReceived", { count: result.summary.length }));
     setStatus(t("summaryReady"), "idle");
@@ -2015,74 +2173,29 @@ async function generateSummary() {
     setStatus(t("error"), "error");
   } finally {
     window.clearTimeout(timeout);
-    isSummarizing = false;
+    summarizingTo = "";
     renderSummary();
   }
 }
 
+async function selectSummaryLanguage(targetLanguage) {
+  const session = getActiveSession();
+  const language = normalizeLanguageCode(targetLanguage) || uiLanguage;
+  if (!session) return;
+  session.summaryLanguage = language;
+  renderSummary();
+  if (!getSummaryText(session, language).trim()) await generateSummary(language);
+  else saveLibrary();
+}
+
 async function copySummary() {
-  const summary = getActiveSession()?.summary?.trim() ?? "";
+  const session = getActiveSession();
+  const summary = getSummaryText(session, getActiveSummaryLanguage(session)).trim();
   if (!summary) {
     showError(t("summaryEmpty"));
     return;
   }
   await copyText(summary, t("summaryCopied"), copySummaryButton);
-}
-
-function renderTranslationPanel() {
-  const session = getActiveSession();
-  const segments = getSegments();
-  const sourceLanguage = getSourceLanguageForTranslation();
-  const dominantSourceLanguage = getDominantSourceLanguage();
-  languageElement.textContent = sourceLanguage === "mixed"
-    ? t("detectedMixed")
-    : dominantSourceLanguage
-    ? t("detected", { language: getLanguageLabel(sourceLanguage) })
-    : t("detectedUnknown");
-
-  translateActionsElement.replaceChildren();
-  translationsElement.replaceChildren();
-
-  for (const language of TRANSLATION_LANGUAGES) {
-    const button = document.createElement("button");
-    button.className = "translation-button";
-    button.type = "button";
-    button.textContent = language.label;
-    button.disabled = !segments.length || (sourceLanguage !== "mixed" && sourceLanguage === language.code) || translatingTo === language.code;
-    button.addEventListener("click", () => translateTranscript(language.code));
-    translateActionsElement.append(button);
-  }
-
-  if (translatingTo) {
-    const loading = document.createElement("p");
-    loading.className = "translation-status";
-    loading.textContent = t("translating", { language: getLanguageLabel(translatingTo) });
-    translationsElement.append(loading);
-  }
-
-  for (const language of TRANSLATION_LANGUAGES) {
-    const translation = session?.translations?.[language.code];
-    if (!translation) continue;
-
-    const translationBlock = document.createElement("div");
-    translationBlock.className = "translation-result";
-
-    const copyButton = document.createElement("button");
-    copyButton.className = "copy-button";
-    copyButton.type = "button";
-    copyButton.textContent = t("copy");
-    copyButton.addEventListener("click", () => copyText(translation, t("blockCopied", { language: language.label }), copyButton));
-
-    const label = document.createElement("p");
-    label.className = "translation-label";
-    label.textContent = language.label;
-
-    const text = document.createElement("p");
-    text.textContent = translation;
-
-    translationBlock.append(copyButton, label, text);
-    translationsElement.append(translationBlock);
-  }
 }
 
 function getDominantSourceLanguage() {
@@ -2134,7 +2247,8 @@ async function translateTranscript(targetLanguage) {
 
   translatingTo = targetLanguage;
   addDiagnostic(t("translationRequested", { language: getLanguageLabel(targetLanguage) }));
-  renderTranslationPanel();
+  renderTranscriptTabs();
+  renderSegments();
 
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), TRANSLATION_TIMEOUT_MS);
@@ -2169,7 +2283,8 @@ async function translateTranscript(targetLanguage) {
   } finally {
     window.clearTimeout(timeout);
     translatingTo = "";
-    renderTranslationPanel();
+    renderTranscriptTabs();
+    renderSegments();
   }
 }
 
@@ -2187,12 +2302,19 @@ function getTranscriptText() {
 
 async function copyFullTranscript() {
   clearError();
-  if (!getSegments().length) {
+  const text = getActiveTranscriptText().trim();
+  if (!text) {
     showError(t("nothingToCopy"));
     return;
   }
 
-  await copyText(formatTranscriptForExport(), t("fullCopied"), copyAllButton);
+  await copyText(text, t("fullCopied"), copyAllButton);
+}
+
+function getActiveTranscriptText() {
+  const session = getActiveSession();
+  if (activeTranscriptTab === "original") return getTranscriptText();
+  return session?.translations?.[activeTranscriptTab] ?? "";
 }
 
 async function copyText(text, successMessage, button) {
@@ -2256,7 +2378,9 @@ function formatTranscriptForExport() {
   }
 
   if (session.notes?.trim()) lines.push("", `[${t("notesTitle")}]`, session.notes.trim(), "");
-  if (session.summary?.trim()) lines.push("", `[${t("summaryTitle")}]`, session.summary.trim(), "");
+  for (const [languageCode, summary] of Object.entries(getSessionSummaries(session))) {
+    if (summary?.trim()) lines.push("", `[${t("summaryTitle")} - ${getLanguageLabel(languageCode)}]`, summary.trim(), "");
+  }
 
   for (const language of TRANSLATION_LANGUAGES) {
     const translation = session.translations?.[language.code];
@@ -2273,6 +2397,7 @@ async function clearTranscript() {
   session.segments = [];
   session.translations = {};
   session.summary = "";
+  session.summaries = {};
   saveLibrary();
   renderAll();
 }
@@ -2311,6 +2436,32 @@ function normalizeLanguageCode(languageCode) {
 
 function normalizeTextSize(size) {
   return ["small", "medium", "large"].includes(size) ? size : "medium";
+}
+
+function normalizeSummaries(value, legacySummary = "", legacyLanguage = "") {
+  const summaries = value && typeof value === "object" && !Array.isArray(value) ? { ...value } : {};
+  const language = normalizeLanguageCode(legacyLanguage) || uiLanguage;
+  if (legacySummary && !summaries[language]) summaries[language] = legacySummary;
+  return Object.fromEntries(
+    Object.entries(summaries)
+      .map(([languageCode, text]) => [normalizeLanguageCode(languageCode), typeof text === "string" ? text : ""])
+      .filter(([languageCode, text]) => languageCode && text)
+  );
+}
+
+function getSessionSummaries(session) {
+  if (!session) return {};
+  session.summaries = normalizeSummaries(session.summaries, session.summary, session.summaryLanguage);
+  return session.summaries;
+}
+
+function getActiveSummaryLanguage(session = getActiveSession()) {
+  return normalizeLanguageCode(session?.summaryLanguage) || uiLanguage;
+}
+
+function getSummaryText(session, language = getActiveSummaryLanguage(session)) {
+  if (!session) return "";
+  return getSessionSummaries(session)[normalizeLanguageCode(language)] ?? "";
 }
 
 function getLanguageLabel(languageCode) {
@@ -2436,6 +2587,8 @@ function normalizeSubjects(subjects) {
       createdAt: session.createdAt ?? new Date().toISOString(),
       notes: session.notes ?? "",
       summary: session.summary ?? "",
+      summaryLanguage: normalizeLanguageCode(session.summaryLanguage) || uiLanguage,
+      summaries: normalizeSummaries(session.summaries, session.summary, session.summaryLanguage),
       segments: Array.isArray(session.segments)
         ? session.segments.map((segment) => ({
             ...segment,
@@ -2481,10 +2634,22 @@ function loadJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) ?? JSON.stringify(fallback)); } catch { return fallback; }
 }
 
-function saveLibrary() {
+function saveLibrary({ defer = false } = {}) {
   ensureActiveSession();
-  localStorage.setItem(LIBRARY_KEY, JSON.stringify(library));
+  if (defer) scheduleLocalLibrarySave();
+  else flushLocalLibrarySave();
   scheduleCloudSync();
+}
+
+function scheduleLocalLibrarySave() {
+  window.clearTimeout(localSaveTimer);
+  localSaveTimer = window.setTimeout(flushLocalLibrarySave, LIVE_SAVE_DELAY_MS);
+}
+
+function flushLocalLibrarySave() {
+  window.clearTimeout(localSaveTimer);
+  localSaveTimer = undefined;
+  localStorage.setItem(LIBRARY_KEY, JSON.stringify(library));
 }
 
 function summarizeMessage(rawMessage) {

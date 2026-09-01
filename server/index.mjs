@@ -18,7 +18,7 @@ const summaryModels = (process.env.GEMINI_SUMMARY_MODELS ?? "gemini-3.5-flash-li
   .map((model) => model.trim())
   .filter(Boolean);
 const summaryTimeoutMs = Number(process.env.SUMMARY_TIMEOUT_MS ?? 25_000);
-const serverVersion = "2026-09-01.summary-v1";
+const serverVersion = "2026-09-01.summary-languages";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],

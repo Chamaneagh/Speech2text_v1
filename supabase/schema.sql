@@ -35,6 +35,8 @@ create table public.lecture_sessions (
   title text not null check (length(trim(title)) > 0),
   notes text not null default '',
   summary text not null default '',
+  summary_language text not null default 'en',
+  summaries jsonb not null default '{}'::jsonb,
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

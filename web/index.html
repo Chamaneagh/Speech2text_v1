@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=54">
+    <link rel="stylesheet" href="./styles.css?v=57">
     <title>Speech2Text</title>
   </head>
   <body>
@@ -63,6 +63,17 @@
       </div>
 
       <section class="transcript-card" aria-live="polite">
+        <div class="transcript-toolbar">
+          <div class="transcript-tabs" aria-label="Transcript language">
+            <button class="transcript-tab" type="button" data-transcript-tab="original">Original</button>
+            <button class="transcript-tab" type="button" data-transcript-tab="en">English</button>
+            <button class="transcript-tab" type="button" data-transcript-tab="fr">Français</button>
+            <button class="transcript-tab" type="button" data-transcript-tab="ja">日本語</button>
+            <button class="transcript-tab" type="button" data-transcript-tab="de">Deutsch</button>
+          </div>
+          <button id="transcript-fold" class="fold-button" type="button">▴</button>
+        </div>
+        <p id="transcript-fold-summary" class="fold-summary" hidden>Original</p>
         <div id="transcript" class="transcript" aria-label="Transcript">
           <p class="empty-state">The lecture transcript will appear here.</p>
         </div>
@@ -84,17 +95,14 @@
             <span id="summary-hint">Generated study sheet</span>
           </div>
           <div class="summary-actions">
-            <button id="generate-summary" class="secondary-button compact-button" type="button">Generate</button>
+            <button class="summary-language-button" type="button" data-summary-language="en">English</button>
+            <button class="summary-language-button" type="button" data-summary-language="fr">Français</button>
+            <button class="summary-language-button" type="button" data-summary-language="ja">日本語</button>
+            <button class="summary-language-button" type="button" data-summary-language="de">Deutsch</button>
             <button id="copy-summary" class="secondary-button compact-button" type="button" disabled>Copy</button>
           </div>
         </div>
         <textarea id="session-summary" class="summary-input" rows="8" placeholder="Generate a study sheet from this lecture."></textarea>
-      </section>
-
-      <section class="translation-panel" aria-label="Transcript translation">
-        <p id="language" class="language-state">Detected language: unknown</p>
-        <div id="translate-actions" class="translation-actions"></div>
-        <div id="translations" class="translations"></div>
       </section>
 
       <p id="error" class="error" role="alert" hidden></p>
@@ -152,6 +160,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=54"></script>
+    <script type="module" src="./app.js?v=57"></script>
   </body>
 </html>
