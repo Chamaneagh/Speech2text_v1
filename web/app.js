@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const TOKEN_ENDPOINT = "https://speech2text-broker.onrender.com/api/live-token";
 const TRANSLATE_ENDPOINT = "https://speech2text-broker.onrender.com/api/translate";
 const SUMMARY_ENDPOINT = "https://speech2text-broker.onrender.com/api/summarize";
+const SPEECH_ENDPOINT = "https://speech2text-broker.onrender.com/api/speech";
 const SUPABASE_URL = "https://jjdcjuxeuxbnxggxzbsl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_81wK9xZIlCC9CBukLWIu-g_yx851dCK";
 const MODEL = "gemini-3.5-transcribe-live";
@@ -17,6 +18,7 @@ const FINAL_TRANSCRIPT_WAIT_MS = 3_500;
 const QUIET_FINAL_WAIT_MS = 700;
 const TRANSLATION_TIMEOUT_MS = 30_000;
 const SUMMARY_TIMEOUT_MS = 60_000;
+const SPEECH_TIMEOUT_MS = 60_000;
 const COPY_CONFIRMATION_MS = 1_200;
 const CLOUD_SYNC_DELAY_MS = 900;
 const LIVE_SAVE_DELAY_MS = 1_500;
@@ -78,6 +80,13 @@ const UI_STRINGS = {
     foldTranscript: "Collapse transcript",
     unfoldTranscript: "Show transcript",
     foldedTranscript: "{label} · {count} characters",
+    playSpeech: "Read translation aloud",
+    stopSpeech: "Stop audio",
+    speechGenerating: "Preparing audio…",
+    speechReady: "Audio ready",
+    speechTapAgain: "Audio ready. Tap play again.",
+    speechFailed: "Audio generation failed.",
+    speechUnavailable: "Generate a translation before listening to it.",
     foldNotes: "Collapse notes",
     unfoldNotes: "Show notes",
     foldedNotes: "Notes · {count} characters",
@@ -255,6 +264,13 @@ const UI_STRINGS = {
     foldTranscript: "Replier la transcription",
     unfoldTranscript: "Afficher la transcription",
     foldedTranscript: "{label} · {count} caractères",
+    playSpeech: "Lire la traduction à voix haute",
+    stopSpeech: "Arrêter l'audio",
+    speechGenerating: "Préparation de l'audio…",
+    speechReady: "Audio prêt",
+    speechTapAgain: "Audio prêt. Appuie à nouveau sur lecture.",
+    speechFailed: "La génération audio a échoué.",
+    speechUnavailable: "Génère une traduction avant de l'écouter.",
     foldNotes: "Replier les notes",
     unfoldNotes: "Afficher les notes",
     foldedNotes: "Notes · {count} caractères",
@@ -421,6 +437,7 @@ const statusElement = document.querySelector("#status");
 const transcriptElement = document.querySelector("#transcript");
 const interimElement = document.querySelector("#interim");
 const transcriptCardElement = document.querySelector(".transcript-card");
+const speakTranscriptButton = document.querySelector("#speak-transcript");
 const transcriptFoldButton = document.querySelector("#transcript-fold");
 const transcriptFoldSummaryElement = document.querySelector("#transcript-fold-summary");
 const errorElement = document.querySelector("#error");
@@ -512,6 +529,7 @@ let plannedSocketCloses = new WeakSet();
 let diagnosticLines = [];
 let translatingTo = "";
 let summarizingTo = "";
+let speakingKey = "";
 let activeTranscriptTab = "original";
 let isTranscriptFolded = false;
 let isNotesFolded = false;
@@ -528,6 +546,8 @@ let isApplyingCloudLibrary = false;
 let isCoursePanelCollapsed = false;
 let transcriptEditTimer;
 let wakeLock;
+let speechAudio;
+const speechCache = new Map();
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
 let summaryProfile = normalizeSummaryProfile(localStorage.getItem(SUMMARY_PROFILE_KEY));
@@ -541,6 +561,7 @@ initializeAuth();
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
 copyAllButton.addEventListener("click", copyFullTranscript);
 clearButton.addEventListener("click", clearTranscript);
+speakTranscriptButton.addEventListener("click", toggleSpeechPlayback);
 transcriptFoldButton.addEventListener("click", toggleTranscriptFold);
 notesFoldButton.addEventListener("click", toggleNotesFold);
 summarySettingsButton.addEventListener("click", openSummaryProfileDialog);
@@ -946,6 +967,7 @@ function handleMessage(message) {
     addDiagnostic(t("finalReceived", { count: finalized.length, language: sourceLanguage ? ` (${sourceLanguage})` : "" }));
     session.segments.push(segment);
     session.translations = {};
+    stopSpeechPlayback();
     hideInterimTranscript();
     appendTranscriptSegment(segment);
     saveLibrary({ defer: true });
@@ -2083,7 +2105,21 @@ function renderTranscriptTabs() {
       : t("translationRequested", { language: getLanguageLabel(tab) });
     button.setAttribute("aria-pressed", activeTranscriptTab === tab ? "true" : "false");
   }
+  renderSpeechButton();
   renderTranscriptFoldState();
+}
+
+function renderSpeechButton() {
+  const session = getActiveSession();
+  const text = getActiveTranscriptText().trim();
+  const speechKey = getSpeechCacheKey();
+  const canSpeak = Boolean(session && activeTranscriptTab !== "original" && text && session.translations?.[activeTranscriptTab]);
+  const isGenerating = Boolean(speakingKey && speakingKey === speechKey);
+  const isPlaying = Boolean(speechAudio && !speechAudio.paused && speechAudio.dataset.speechKey === speechKey);
+  speakTranscriptButton.disabled = !canSpeak || isListening || isStopping || translatingTo || (Boolean(speakingKey) && !isGenerating);
+  speakTranscriptButton.textContent = isGenerating ? "…" : (isPlaying ? "■" : "▶");
+  speakTranscriptButton.title = isPlaying ? t("stopSpeech") : t(canSpeak ? "playSpeech" : "speechUnavailable");
+  speakTranscriptButton.setAttribute("aria-label", speakTranscriptButton.title);
 }
 
 function renderTranscriptFoldState() {
@@ -2113,6 +2149,7 @@ function toggleTranscriptFold() {
 
 async function selectTranscriptTab(tab) {
   if (isListening || isStopping || translatingTo) return;
+  stopSpeechPlayback();
   if (tab === "original") {
     activeTranscriptTab = "original";
     renderTranscriptTabs();
@@ -2129,6 +2166,105 @@ async function selectTranscriptTab(tab) {
   renderTranscriptTabs();
   renderSegments();
   if (!session.translations?.[activeTranscriptTab]) await translateTranscript(activeTranscriptTab);
+}
+
+async function toggleSpeechPlayback() {
+  const session = getActiveSession();
+  const targetLanguage = normalizeLanguageCode(activeTranscriptTab);
+  const text = getActiveTranscriptText().trim();
+  if (!session || targetLanguage === "original" || !text || !session.translations?.[targetLanguage]) {
+    showError(t("speechUnavailable"));
+    return;
+  }
+
+  const speechKey = getSpeechCacheKey();
+  if (speechAudio && speechAudio.dataset.speechKey === speechKey && !speechAudio.paused) {
+    stopSpeechPlayback();
+    return;
+  }
+
+  stopSpeechPlayback();
+  let url = speechCache.get(speechKey);
+  if (!url) {
+    url = await createSpeechAudioURL({ text, targetLanguage, speechKey });
+    if (!url) return;
+    speechCache.set(speechKey, url);
+  }
+
+  speechAudio = new Audio(url);
+  speechAudio.dataset.speechKey = speechKey;
+  speechAudio.addEventListener("ended", () => {
+    speechAudio = undefined;
+    setStatus(t("speechReady"), "idle");
+    renderSpeechButton();
+  }, { once: true });
+  speechAudio.addEventListener("pause", renderSpeechButton);
+  try {
+    await speechAudio.play();
+  } catch {
+    setStatus(t("speechTapAgain"), "idle");
+  }
+  renderSpeechButton();
+}
+
+async function createSpeechAudioURL({ text, targetLanguage, speechKey }) {
+  clearError();
+  if (!authSession?.access_token) {
+    showError(t("signInRequired"));
+    openAuthDialog();
+    return "";
+  }
+
+  speakingKey = speechKey;
+  setStatus(t("speechGenerating"), "connecting");
+  renderSpeechButton();
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), SPEECH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(SPEECH_ENDPOINT, {
+      method: "POST",
+      headers: getAuthenticatedHeaders({ "Content-Type": "application/json" }),
+      signal: controller.signal,
+      body: JSON.stringify({ text, targetLanguage })
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || t("speechFailed"));
+    }
+
+    const audioBlob = await response.blob();
+    setStatus(t("speechReady"), "idle");
+    return URL.createObjectURL(audioBlob);
+  } catch (error) {
+    const message = error.name === "AbortError"
+      ? t("speechFailed")
+      : error.message || t("speechFailed");
+    showError(message);
+    setStatus(t("error"), "error");
+    return "";
+  } finally {
+    window.clearTimeout(timeout);
+    speakingKey = "";
+    renderSpeechButton();
+  }
+}
+
+function stopSpeechPlayback() {
+  if (!speechAudio) return;
+  speechAudio.pause();
+  speechAudio.currentTime = 0;
+  speechAudio = undefined;
+  renderSpeechButton();
+}
+
+function getSpeechCacheKey() {
+  const session = getActiveSession();
+  const language = normalizeLanguageCode(activeTranscriptTab);
+  const text = getActiveTranscriptText();
+  return session && language ? `${session.id}:${language}:${hashText(text)}` : "";
 }
 
 function appendTranscriptSegment(segment) {
@@ -2534,6 +2670,7 @@ async function translateTranscript(targetLanguage) {
     }
 
     session.translations = { ...(session.translations ?? {}), [targetLanguage]: result.translation };
+    clearSpeechCacheForSession(session.id, targetLanguage);
     saveLibrary();
     addDiagnostic(t("translationReceived", { count: result.translation.length }));
     setStatus(t("translationReady"), "idle");
@@ -2657,6 +2794,8 @@ async function clearTranscript() {
   const session = getActiveSession();
   if (!session) return;
   if (!(await confirmAction(t("clearConfirm")))) return;
+  stopSpeechPlayback();
+  clearSpeechCacheForSession(session.id);
   session.segments = [];
   session.translations = {};
   session.summary = "";
@@ -2699,6 +2838,23 @@ function normalizeLanguageCode(languageCode) {
 
 function normalizeTextSize(size) {
   return ["small", "medium", "large"].includes(size) ? size : "medium";
+}
+
+function hashText(text) {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function clearSpeechCacheForSession(sessionId, language = "") {
+  const prefix = language ? `${sessionId}:${language}:` : `${sessionId}:`;
+  for (const [key, url] of speechCache.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    URL.revokeObjectURL(url);
+    speechCache.delete(key);
+  }
 }
 
 function normalizeSummaryProfile(profileCode) {

@@ -18,7 +18,12 @@ const summaryModels = (process.env.GEMINI_SUMMARY_MODELS ?? "gemini-3.5-flash-li
   .map((model) => model.trim())
   .filter(Boolean);
 const summaryTimeoutMs = Number(process.env.SUMMARY_TIMEOUT_MS ?? 25_000);
-const serverVersion = "2026-09-02.summary-profiles";
+const ttsModels = (process.env.GEMINI_TTS_MODELS ?? "gemini-2.5-flash-preview-tts")
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean);
+const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 45_000);
+const serverVersion = "2026-09-02.translation-tts";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -264,6 +269,98 @@ async function generateSummary({ model, prompt }) {
   }
 }
 
+async function synthesizeSpeech({ text, targetLanguage }) {
+  const languageName = targetLanguages.get(targetLanguage) ?? "English";
+  const prompt = [
+    `Read the following ${languageName} text aloud clearly and naturally.`,
+    "Use a calm, neutral educational tone.",
+    "",
+    text
+  ].join("\n");
+
+  const failures = [];
+  for (const model of ttsModels) {
+    try {
+      return await generateSpeech({ model, prompt });
+    } catch (error) {
+      failures.push(`${model}: ${error.message}`);
+    }
+  }
+
+  throw new Error(`Speech generation failed after ${ttsModels.length} attempt(s). ${failures.join(" | ")}`);
+}
+
+async function generateSpeech({ model, prompt }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ttsTimeoutMs);
+
+  try {
+    const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
+    url.searchParams.set("key", apiKey);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: "Kore"
+              }
+            }
+          }
+        }
+      }),
+      signal: controller.signal
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || `HTTP ${response.status}`);
+
+    const inlineData = result.candidates?.[0]?.content?.parts?.find((part) => part.inlineData)?.inlineData;
+    const data = inlineData?.data;
+    if (!data) throw new Error("empty response");
+
+    const sampleRate = parseSampleRate(inlineData.mimeType) || 24_000;
+    return createWavBuffer(Buffer.from(data, "base64"), sampleRate);
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error(`timed out after ${ttsTimeoutMs} ms`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseSampleRate(mimeType = "") {
+  const match = mimeType.match(/rate=(\d+)/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function createWavBuffer(pcmBuffer, sampleRate, channels = 1, bitsPerSample = 16) {
+  const header = Buffer.alloc(44);
+  const byteRate = sampleRate * channels * bitsPerSample / 8;
+  const blockAlign = channels * bitsPerSample / 8;
+
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcmBuffer.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcmBuffer.length, 40);
+
+  return Buffer.concat([header, pcmBuffer]);
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -281,13 +378,15 @@ const server = http.createServer(async (request, response) => {
     sendJSON(response, 200, {
       ok: true,
       version: serverVersion,
-      features: ["live-token", "translate", "summarize", "supabase-auth"],
+      features: ["live-token", "translate", "summarize", "speech", "supabase-auth"],
       authRequired,
       authTimeoutMs,
       translateModels,
       translateTimeoutMs,
       summaryModels,
       summaryTimeoutMs,
+      ttsModels,
+      ttsTimeoutMs,
       summaryProfiles: [...summaryProfiles.keys()]
     });
     return;
@@ -345,6 +444,34 @@ const server = http.createServer(async (request, response) => {
     } catch (error) {
       if (error.statusCode !== 401) console.error("Unable to summarize transcript", error);
       sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to summarize transcript" });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/speech") {
+    try {
+      await authenticateRequest(request);
+      const body = parseJSONBody(await readRequestBody(request));
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage : "en";
+
+      if (!text) {
+        sendJSON(response, 400, { error: "Text is required" });
+        return;
+      }
+
+      const audio = await synthesizeSpeech({ text, targetLanguage });
+      response.writeHead(200, {
+        "Content-Type": "audio/wav",
+        "Content-Length": audio.length,
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": webOrigin,
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
+      });
+      response.end(audio);
+    } catch (error) {
+      if (error.statusCode !== 401) console.error("Unable to generate speech", error);
+      sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to generate speech" });
     }
     return;
   }
