@@ -34,6 +34,7 @@ create table public.lecture_sessions (
   course_id uuid not null references public.courses(id) on delete restrict,
   title text not null check (length(trim(title)) > 0),
   notes text not null default '',
+  summary text not null default '',
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

@@ -13,7 +13,12 @@ const translateModels = (process.env.GEMINI_TRANSLATE_MODELS ?? "gemini-3.5-flas
   .map((model) => model.trim())
   .filter(Boolean);
 const translateTimeoutMs = Number(process.env.TRANSLATE_TIMEOUT_MS ?? 12_000);
-const serverVersion = "2026-09-01.mixed-translation";
+const summaryModels = (process.env.GEMINI_SUMMARY_MODELS ?? "gemini-3.5-flash-lite,gemini-3.5-flash")
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean);
+const summaryTimeoutMs = Number(process.env.SUMMARY_TIMEOUT_MS ?? 25_000);
+const serverVersion = "2026-09-01.summary-v1";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -86,7 +91,7 @@ function readRequestBody(request) {
     request.setEncoding("utf8");
     request.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 20_000) {
+      if (body.length > 1_500_000) {
         reject(new Error("Request body too large"));
         request.destroy();
       }
@@ -173,6 +178,74 @@ async function generateTranslation({ model, prompt }) {
   }
 }
 
+async function summarizeText({ text, targetLanguage, courseTitle, sessionTitle }) {
+  const targetLanguageName = targetLanguages.get(targetLanguage) ?? "English";
+  const prompt = [
+    `Create a structured study sheet in ${targetLanguageName} from this lecture transcript.`,
+    "Return only Markdown. Do not invent facts that are not supported by the transcript.",
+    "Use concise, useful wording for a student preparing exams.",
+    "Include these sections:",
+    "# Study Sheet",
+    "## Short Summary",
+    "## Main Ideas",
+    "## Key Concepts",
+    "## Important Details",
+    "## Possible Exam Questions",
+    "## Vocabulary",
+    "",
+    `Course: ${courseTitle || "Unknown course"}`,
+    `Lecture: ${sessionTitle || "Unknown lecture"}`,
+    "",
+    text
+  ].join("\n");
+
+  const failures = [];
+  for (const model of summaryModels) {
+    try {
+      return await generateSummary({ model, prompt });
+    } catch (error) {
+      failures.push(`${model}: ${error.message}`);
+    }
+  }
+
+  throw new Error(`Summary failed after ${summaryModels.length} attempt(s). ${failures.join(" | ")}`);
+}
+
+async function generateSummary({ model, prompt }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), summaryTimeoutMs);
+
+  try {
+    const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
+    url.searchParams.set("key", apiKey);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 4096
+        }
+      }),
+      signal: controller.signal
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || `HTTP ${response.status}`);
+
+    const summary = result.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("").trim();
+    if (!summary) throw new Error("empty response");
+    return summary;
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error(`timed out after ${summaryTimeoutMs} ms`);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -190,11 +263,13 @@ const server = http.createServer(async (request, response) => {
     sendJSON(response, 200, {
       ok: true,
       version: serverVersion,
-      features: ["live-token", "translate", "supabase-auth"],
+      features: ["live-token", "translate", "summarize", "supabase-auth"],
       authRequired,
       authTimeoutMs,
       translateModels,
-      translateTimeoutMs
+      translateTimeoutMs,
+      summaryModels,
+      summaryTimeoutMs
     });
     return;
   }
@@ -222,6 +297,34 @@ const server = http.createServer(async (request, response) => {
     } catch (error) {
       if (error.statusCode !== 401) console.error("Unable to translate transcript", error);
       sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to translate transcript" });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/summarize") {
+    try {
+      await authenticateRequest(request);
+      const body = parseJSONBody(await readRequestBody(request));
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage : "en";
+      const courseTitle = typeof body.courseTitle === "string" ? body.courseTitle.trim() : "";
+      const sessionTitle = typeof body.sessionTitle === "string" ? body.sessionTitle.trim() : "";
+
+      if (!text) {
+        sendJSON(response, 400, { error: "Text is required" });
+        return;
+      }
+
+      const summary = await summarizeText({ text, targetLanguage, courseTitle, sessionTitle });
+      if (!summary) {
+        sendJSON(response, 502, { error: "Gemini returned an empty summary" });
+        return;
+      }
+
+      sendJSON(response, 200, { summary });
+    } catch (error) {
+      if (error.statusCode !== 401) console.error("Unable to summarize transcript", error);
+      sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to summarize transcript" });
     }
     return;
   }

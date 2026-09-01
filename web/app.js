@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const TOKEN_ENDPOINT = "https://speech2text-broker.onrender.com/api/live-token";
 const TRANSLATE_ENDPOINT = "https://speech2text-broker.onrender.com/api/translate";
+const SUMMARY_ENDPOINT = "https://speech2text-broker.onrender.com/api/summarize";
 const SUPABASE_URL = "https://jjdcjuxeuxbnxggxzbsl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_81wK9xZIlCC9CBukLWIu-g_yx851dCK";
 const MODEL = "gemini-3.5-transcribe-live";
@@ -14,6 +15,7 @@ const LEGACY_TRANSLATIONS_KEY = `${LEGACY_SEGMENTS_KEY}.translations`;
 const FINAL_TRANSCRIPT_WAIT_MS = 3_500;
 const QUIET_FINAL_WAIT_MS = 700;
 const TRANSLATION_TIMEOUT_MS = 30_000;
+const SUMMARY_TIMEOUT_MS = 60_000;
 const COPY_CONFIRMATION_MS = 1_200;
 const CLOUD_SYNC_DELAY_MS = 900;
 const LIVE_SESSION_ROTATE_MS = 8.5 * 60 * 1000;
@@ -82,6 +84,20 @@ const UI_STRINGS = {
     notesTitle: "Notes",
     notesHint: "Saved automatically",
     notesPlaceholder: "Add notes while listening...",
+    summaryTitle: "Summary",
+    summaryHint: "Generated study sheet",
+    summaryPlaceholder: "Generate a study sheet from this lecture.",
+    generateSummary: "Generate",
+    regenerateSummary: "Regenerate",
+    copySummary: "Copy",
+    summaryCopied: "Summary copied.",
+    summaryGenerating: "Generating study sheet…",
+    summaryRequested: "Study sheet requested.",
+    summaryReady: "Study sheet ready",
+    summaryReceived: "Study sheet received: {count} characters.",
+    summarySlow: "The study sheet is taking too long. Try again with a shorter transcript.",
+    summaryFailed: "Study sheet generation failed.",
+    summaryEmpty: "No summary to copy yet.",
     editTranscriptSegment: "Edit transcript",
     emptyTranscriptSegment: "The transcript cannot be empty.",
     rename: "Double-click to rename",
@@ -217,6 +233,20 @@ const UI_STRINGS = {
     notesTitle: "Notes",
     notesHint: "Enregistrées automatiquement",
     notesPlaceholder: "Ajouter des notes pendant l'écoute...",
+    summaryTitle: "Fiche résumé",
+    summaryHint: "Fiche de révision générée",
+    summaryPlaceholder: "Générer une fiche de révision à partir de cette séance.",
+    generateSummary: "Générer",
+    regenerateSummary: "Régénérer",
+    copySummary: "Copier",
+    summaryCopied: "Fiche résumé copiée.",
+    summaryGenerating: "Génération de la fiche…",
+    summaryRequested: "Fiche résumé demandée.",
+    summaryReady: "Fiche résumé prête",
+    summaryReceived: "Fiche reçue: {count} caractères.",
+    summarySlow: "La génération de fiche prend trop de temps. Essaie avec une transcription plus courte.",
+    summaryFailed: "La génération de fiche a échoué.",
+    summaryEmpty: "Aucune fiche résumé à copier pour le moment.",
     editTranscriptSegment: "Modifier la transcription",
     emptyTranscriptSegment: "La transcription ne peut pas être vide.",
     rename: "Double-cliquer pour renommer",
@@ -341,6 +371,11 @@ const activityTextElement = document.querySelector("#activity-text");
 const notesTitleElement = document.querySelector("#notes-title");
 const notesHintElement = document.querySelector("#notes-hint");
 const sessionNotesElement = document.querySelector("#session-notes");
+const summaryTitleElement = document.querySelector("#summary-title");
+const summaryHintElement = document.querySelector("#summary-hint");
+const sessionSummaryElement = document.querySelector("#session-summary");
+const generateSummaryButton = document.querySelector("#generate-summary");
+const copySummaryButton = document.querySelector("#copy-summary");
 const subjectDialog = document.querySelector("#subject-dialog");
 const subjectForm = document.querySelector("#subject-form");
 const subjectNameInput = document.querySelector("#subject-name");
@@ -391,6 +426,7 @@ let queuedAudioChunks = [];
 let plannedSocketCloses = new WeakSet();
 let diagnosticLines = [];
 let translatingTo = "";
+let isSummarizing = false;
 let pendingSessionSelect;
 let authSession;
 let authMode = "signIn";
@@ -431,6 +467,9 @@ uiFrenchButton.addEventListener("click", () => setInterfaceLanguage("fr"));
 subjectCancelButton.addEventListener("click", () => subjectDialog.close());
 subjectForm.addEventListener("submit", createSubjectFromDialog);
 sessionNotesElement.addEventListener("input", saveSessionNotes);
+sessionSummaryElement.addEventListener("input", saveSessionSummary);
+generateSummaryButton.addEventListener("click", generateSummary);
+copySummaryButton.addEventListener("click", copySummary);
 authButton.addEventListener("click", handleAuthButton);
 authForm.addEventListener("submit", handleAuthSubmit);
 authSwitchButton.addEventListener("click", toggleAuthMode);
@@ -906,6 +945,7 @@ function createSessionRecord() {
     createdAt: new Date().toISOString(),
     segments: [],
     notes: "",
+    summary: "",
     translations: {}
   };
 }
@@ -957,6 +997,7 @@ function renderAll() {
   renderWorkspaceSwitcher();
   renderSegments();
   renderNotes();
+  renderSummary();
   renderTranslationPanel();
 }
 
@@ -988,6 +1029,10 @@ function renderInterfaceText() {
   notesTitleElement.textContent = t("notesTitle");
   notesHintElement.textContent = t("notesHint");
   sessionNotesElement.placeholder = t("notesPlaceholder");
+  summaryTitleElement.textContent = t("summaryTitle");
+  summaryHintElement.textContent = t("summaryHint");
+  sessionSummaryElement.placeholder = t("summaryPlaceholder");
+  copySummaryButton.textContent = t("copySummary");
   uiEnglishButton.dataset.active = uiLanguage === "en" ? "true" : "false";
   uiFrenchButton.dataset.active = uiLanguage === "fr" ? "true" : "false";
   coursePanelToggleButton.title = t("collapseCoursePanel");
@@ -1238,6 +1283,7 @@ function applyCloudLibrary({ workspaces, courses, sessions, segments, translatio
         title: session.title,
         createdAt: session.created_at,
         notes: session.notes ?? "",
+        summary: session.summary ?? "",
         segments: (segmentsBySession.get(session.id) ?? []).map((segment) => ({
           id: segment.id,
           text: segment.text,
@@ -1334,6 +1380,7 @@ async function syncLibraryToCloud({ announce = true } = {}) {
             course_id: subject.id,
             title: session.title,
             notes: session.notes ?? "",
+            summary: session.summary ?? "",
             sort_order: sessionIndex,
             created_at: session.createdAt
           });
@@ -1893,6 +1940,95 @@ function saveSessionNotes() {
   saveLibrary();
 }
 
+function renderSummary() {
+  const session = getActiveSession();
+  const hasTranscript = getSegments().length > 0;
+  const summary = session?.summary ?? "";
+  sessionSummaryElement.value = summary;
+  sessionSummaryElement.disabled = !session || isListening || isStopping || isSummarizing;
+  generateSummaryButton.disabled = !session || !hasTranscript || isListening || isStopping || isSummarizing;
+  copySummaryButton.disabled = !summary.trim() || isSummarizing;
+  generateSummaryButton.textContent = isSummarizing
+    ? t("summaryGenerating")
+    : summary.trim()
+    ? t("regenerateSummary")
+    : t("generateSummary");
+}
+
+function saveSessionSummary() {
+  const session = getActiveSession();
+  if (!session) return;
+  session.summary = sessionSummaryElement.value;
+  saveLibrary();
+  copySummaryButton.disabled = !session.summary.trim();
+}
+
+async function generateSummary() {
+  clearError();
+  if (!authSession?.access_token) {
+    showError(t("signInRequired"));
+    openAuthDialog();
+    return;
+  }
+
+  const session = getActiveSession();
+  const subject = getActiveSubject();
+  const text = getTranscriptText().trim();
+  if (!session || !subject || !text) return;
+
+  isSummarizing = true;
+  setStatus(t("summaryGenerating"), "connecting");
+  addDiagnostic(t("summaryRequested"));
+  renderSummary();
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), SUMMARY_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(SUMMARY_ENDPOINT, {
+      method: "POST",
+      headers: getAuthenticatedHeaders({ "Content-Type": "application/json" }),
+      signal: controller.signal,
+      body: JSON.stringify({
+        text,
+        targetLanguage: uiLanguage,
+        courseTitle: subject.name,
+        sessionTitle: session.title
+      })
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.summary) {
+      throw new Error(result.error || t("summaryFailed"));
+    }
+
+    session.summary = result.summary;
+    saveLibrary();
+    addDiagnostic(t("summaryReceived", { count: result.summary.length }));
+    setStatus(t("summaryReady"), "idle");
+  } catch (error) {
+    const message = error.name === "AbortError"
+      ? t("summarySlow")
+      : error.message || t("summaryFailed");
+    addDiagnostic(`Erreur de fiche: ${message}`);
+    showError(message);
+    setStatus(t("error"), "error");
+  } finally {
+    window.clearTimeout(timeout);
+    isSummarizing = false;
+    renderSummary();
+  }
+}
+
+async function copySummary() {
+  const summary = getActiveSession()?.summary?.trim() ?? "";
+  if (!summary) {
+    showError(t("summaryEmpty"));
+    return;
+  }
+  await copyText(summary, t("summaryCopied"), copySummaryButton);
+}
+
 function renderTranslationPanel() {
   const session = getActiveSession();
   const segments = getSegments();
@@ -2120,6 +2256,7 @@ function formatTranscriptForExport() {
   }
 
   if (session.notes?.trim()) lines.push("", `[${t("notesTitle")}]`, session.notes.trim(), "");
+  if (session.summary?.trim()) lines.push("", `[${t("summaryTitle")}]`, session.summary.trim(), "");
 
   for (const language of TRANSLATION_LANGUAGES) {
     const translation = session.translations?.[language.code];
@@ -2135,6 +2272,7 @@ async function clearTranscript() {
   if (!(await confirmAction(t("clearConfirm")))) return;
   session.segments = [];
   session.translations = {};
+  session.summary = "";
   saveLibrary();
   renderAll();
 }
@@ -2297,6 +2435,7 @@ function normalizeSubjects(subjects) {
       ...session,
       createdAt: session.createdAt ?? new Date().toISOString(),
       notes: session.notes ?? "",
+      summary: session.summary ?? "",
       segments: Array.isArray(session.segments)
         ? session.segments.map((segment) => ({
             ...segment,

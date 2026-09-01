@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=53">
+    <link rel="stylesheet" href="./styles.css?v=54">
     <title>Speech2Text</title>
   </head>
   <body>
@@ -77,6 +77,20 @@
         <textarea id="session-notes" class="notes-input" rows="4" placeholder="Add notes while listening..."></textarea>
       </section>
 
+      <section class="summary-panel" aria-label="Lecture summary">
+        <div class="summary-header">
+          <div>
+            <h2 id="summary-title">Summary</h2>
+            <span id="summary-hint">Generated study sheet</span>
+          </div>
+          <div class="summary-actions">
+            <button id="generate-summary" class="secondary-button compact-button" type="button">Generate</button>
+            <button id="copy-summary" class="secondary-button compact-button" type="button" disabled>Copy</button>
+          </div>
+        </div>
+        <textarea id="session-summary" class="summary-input" rows="8" placeholder="Generate a study sheet from this lecture."></textarea>
+      </section>
+
       <section class="translation-panel" aria-label="Transcript translation">
         <p id="language" class="language-state">Detected language: unknown</p>
         <div id="translate-actions" class="translation-actions"></div>
@@ -138,6 +152,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=53"></script>
+    <script type="module" src="./app.js?v=54"></script>
   </body>
 </html>
