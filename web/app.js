@@ -74,6 +74,19 @@ const UI_STRINGS = {
     copied: "✓ Copied",
     copyAll: "Copy all",
     copyAllShort: "Copy",
+    exportSession: "Export",
+    exportTitle: "Export lecture",
+    exportDescription: "Choose a formatted export.",
+    exportMarkdown: "Markdown",
+    exportPdf: "PDF",
+    exportWord: "Word",
+    exportReady: "Export ready.",
+    printReady: "Print window opened.",
+    searchWorkspace: "Search",
+    searchTitle: "Search workspace",
+    searchPlaceholder: "Search all lectures...",
+    searchEmpty: "No result.",
+    searchHint: "Type a keyword to search this workspace.",
     clear: "Clear text",
     clearShort: "Clear",
     originalTab: "Original",
@@ -258,6 +271,19 @@ const UI_STRINGS = {
     copied: "✓ Copié",
     copyAll: "Copier tout",
     copyAllShort: "Copier",
+    exportSession: "Exporter",
+    exportTitle: "Exporter la séance",
+    exportDescription: "Choisis un export formaté.",
+    exportMarkdown: "Markdown",
+    exportPdf: "PDF",
+    exportWord: "Word",
+    exportReady: "Export prêt.",
+    printReady: "Fenêtre d'impression ouverte.",
+    searchWorkspace: "Rechercher",
+    searchTitle: "Rechercher dans le workspace",
+    searchPlaceholder: "Rechercher dans toutes les séances...",
+    searchEmpty: "Aucun résultat.",
+    searchHint: "Entre un mot-clé pour chercher dans ce workspace.",
     clear: "Effacer le texte",
     clearShort: "Effacer",
     originalTab: "Original",
@@ -418,6 +444,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 
 const toggleButton = document.querySelector("#toggle");
 const copyAllButton = document.querySelector("#copy-all");
+const exportSessionButton = document.querySelector("#export-session");
+const searchWorkspaceButton = document.querySelector("#search-workspace");
 const clearButton = document.querySelector("#clear");
 const textSizeSmallButton = document.querySelector("#text-size-small");
 const textSizeMediumButton = document.querySelector("#text-size-medium");
@@ -509,6 +537,18 @@ const summaryProfileTitleElement = document.querySelector("#summary-profile-titl
 const summaryProfileDescriptionElement = document.querySelector("#summary-profile-description");
 const summaryProfileListElement = document.querySelector("#summary-profile-list");
 const summaryProfileCloseButton = document.querySelector("#summary-profile-close");
+const exportDialog = document.querySelector("#export-dialog");
+const exportTitleElement = document.querySelector("#export-title");
+const exportDescriptionElement = document.querySelector("#export-description");
+const exportMarkdownButton = document.querySelector("#export-markdown");
+const exportPdfButton = document.querySelector("#export-pdf");
+const exportWordButton = document.querySelector("#export-word");
+const exportCloseButton = document.querySelector("#export-close");
+const searchDialog = document.querySelector("#search-dialog");
+const searchTitleElement = document.querySelector("#search-title");
+const searchInputElement = document.querySelector("#search-input");
+const searchResultsElement = document.querySelector("#search-results");
+const searchCloseButton = document.querySelector("#search-close");
 
 let socket;
 let mediaStream;
@@ -560,6 +600,8 @@ initializeAuth();
 
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
 copyAllButton.addEventListener("click", copyFullTranscript);
+exportSessionButton.addEventListener("click", openExportDialog);
+searchWorkspaceButton.addEventListener("click", openSearchDialog);
 clearButton.addEventListener("click", clearTranscript);
 speakTranscriptButton.addEventListener("click", toggleSpeechPlayback);
 transcriptFoldButton.addEventListener("click", toggleTranscriptFold);
@@ -602,6 +644,12 @@ authCancelButton.addEventListener("click", () => authDialog.close());
 accountCloseButton.addEventListener("click", () => accountDialog.close());
 accountSignOutButton.addEventListener("click", signOut);
 summaryProfileCloseButton.addEventListener("click", () => summaryProfileDialog.close());
+exportMarkdownButton.addEventListener("click", () => exportCurrentSession("markdown"));
+exportPdfButton.addEventListener("click", () => exportCurrentSession("pdf"));
+exportWordButton.addEventListener("click", () => exportCurrentSession("word"));
+exportCloseButton.addEventListener("click", () => exportDialog.close());
+searchInputElement.addEventListener("input", renderSearchResults);
+searchCloseButton.addEventListener("click", () => searchDialog.close());
 
 async function startSession() {
   clearError();
@@ -1147,6 +1195,8 @@ function renderInterfaceText() {
   activeWorkspaceTitleElement.title = t("rename");
   if (!isListening && !isStopping) setActionButton(toggleButton, "🎙️", t("startShort"));
   setActionButton(copyAllButton, "⧉", t("copyAllShort"));
+  setActionButton(exportSessionButton, "⇩", t("exportSession"));
+  setActionButton(searchWorkspaceButton, "⌕", t("searchWorkspace"));
   setActionButton(clearButton, "⌫", t("clearShort"));
   renderTranscriptTabs();
   renderTextSizeControl();
@@ -1179,6 +1229,15 @@ function renderInterfaceText() {
   summaryProfileTitleElement.textContent = t("summaryProfileTitle");
   summaryProfileDescriptionElement.textContent = t("summaryProfileDescription");
   summaryProfileCloseButton.textContent = t("close");
+  exportTitleElement.textContent = t("exportTitle");
+  exportDescriptionElement.textContent = t("exportDescription");
+  exportMarkdownButton.textContent = t("exportMarkdown");
+  exportPdfButton.textContent = t("exportPdf");
+  exportWordButton.textContent = t("exportWord");
+  exportCloseButton.textContent = t("close");
+  searchTitleElement.textContent = t("searchTitle");
+  searchInputElement.placeholder = t("searchPlaceholder");
+  searchCloseButton.textContent = t("close");
   sessionSummaryElement.placeholder = t("summaryPlaceholder");
   editSummaryButton.textContent = t("editSummary");
   copySummaryButton.textContent = t("copySummary");
@@ -2025,6 +2084,8 @@ function renderSegments() {
   transcriptElement.replaceChildren();
   copyAllButton.disabled = !getActiveTranscriptText().trim();
   clearButton.disabled = segments.length === 0;
+  exportSessionButton.disabled = !hasExportableSession();
+  searchWorkspaceButton.disabled = !getActiveWorkspace();
 
   if (isTranscriptFolded) return;
 
@@ -2788,6 +2849,278 @@ function formatTranscriptForExport() {
   }
 
   return lines.join("\n").trimEnd();
+}
+
+function hasExportableSession() {
+  const session = getActiveSession();
+  return Boolean(session && (
+    session.segments?.length ||
+    session.notes?.trim() ||
+    Object.values(session.summaries ?? {}).some((summary) => summary?.trim()) ||
+    Object.values(session.translations ?? {}).some((translation) => translation?.trim())
+  ));
+}
+
+function openExportDialog() {
+  if (!hasExportableSession()) {
+    showError(t("nothingToCopy"));
+    return;
+  }
+  exportDialog.showModal();
+}
+
+function exportCurrentSession(format) {
+  const documentData = buildFormattedExport();
+  if (!documentData) return;
+
+  if (format === "markdown") {
+    downloadBlob(`${documentData.filename}.md`, "text/markdown;charset=utf-8", formatTranscriptForExport());
+  } else if (format === "word") {
+    downloadBlob(`${documentData.filename}.doc`, "application/msword;charset=utf-8", buildWordHTML(documentData));
+  } else if (format === "pdf") {
+    openPrintExport(documentData);
+  }
+
+  exportDialog.close();
+  setStatus(format === "pdf" ? t("printReady") : t("exportReady"), "idle");
+}
+
+function buildFormattedExport() {
+  const session = getActiveSession();
+  const subject = getActiveSubject();
+  if (!session || !subject) return undefined;
+
+  const title = `${subject.name} - ${session.title}`;
+  const date = new Date().toLocaleString(locale());
+  const sections = [];
+  if (session.segments?.length) {
+    sections.push({
+      title: t("originalTab"),
+      html: session.segments.map((segment) => {
+        const time = new Date(segment.createdAt).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+        return `<p><strong>${escapeHTML(time)}</strong> ${escapeHTML(segment.text)}</p>`;
+      }).join("")
+    });
+  }
+
+  for (const language of TRANSLATION_LANGUAGES) {
+    const translation = session.translations?.[language.code]?.trim();
+    if (translation) {
+      sections.push({
+        title: language.label,
+        html: renderPlainTextAsHTML(translation)
+      });
+    }
+  }
+
+  if (session.notes?.trim()) {
+    sections.push({
+      title: t("notesTitle"),
+      html: renderPlainTextAsHTML(session.notes)
+    });
+  }
+
+  for (const [summaryKey, summary] of Object.entries(getSessionSummaries(session))) {
+    if (summary?.trim()) {
+      sections.push({
+        title: formatSummaryExportLabel(summaryKey),
+        html: renderMarkdown(summary)
+      });
+    }
+  }
+
+  return {
+    title,
+    date,
+    filename: slugify(title),
+    sections
+  };
+}
+
+function buildWordHTML(documentData) {
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHTML(documentData.title)}</title>
+  <style>${exportDocumentCSS()}</style>
+</head>
+<body>${buildExportBody(documentData)}</body>
+</html>`;
+}
+
+function openPrintExport(documentData) {
+  const printWindow = window.open("", "_blank", "noopener,noreferrer");
+  if (!printWindow) {
+    showError(t("copyUnavailable"));
+    return;
+  }
+  printWindow.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHTML(documentData.title)}</title>
+  <style>${exportDocumentCSS()} @media print { body { margin: 0; } }</style>
+</head>
+<body>${buildExportBody(documentData)}
+<script>window.addEventListener("load", () => window.print());<\/script>
+</body>
+</html>`);
+  printWindow.document.close();
+}
+
+function buildExportBody(documentData) {
+  return `
+    <main class="export-document">
+      <p class="eyebrow">${escapeHTML(t("copyDate", { date: documentData.date }))}</p>
+      <h1>${escapeHTML(documentData.title)}</h1>
+      ${documentData.sections.map((section) => `
+        <section>
+          <h2>${escapeHTML(section.title)}</h2>
+          ${section.html}
+        </section>
+      `).join("")}
+    </main>
+  `;
+}
+
+function exportDocumentCSS() {
+  return `
+    body { margin: 32px; color: #111827; font-family: Arial, sans-serif; line-height: 1.5; }
+    .export-document { max-width: 760px; margin: 0 auto; }
+    .eyebrow { color: #64748b; font-size: 12px; text-transform: uppercase; }
+    h1 { margin: 0 0 24px; font-size: 28px; }
+    h2 { margin: 24px 0 8px; padding-bottom: 6px; border-bottom: 1px solid #cbd5e1; font-size: 18px; }
+    h3, h4, h5 { margin: 16px 0 8px; font-size: 15px; }
+    p { margin: 0 0 10px; }
+    ul, ol { margin: 0 0 12px; padding-left: 24px; }
+    li { margin: 4px 0; }
+    code { padding: 1px 4px; background: #f1f5f9; border-radius: 4px; }
+  `;
+}
+
+function renderPlainTextAsHTML(text) {
+  return String(text ?? "")
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHTML(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function downloadBlob(filename, type, content) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function slugify(value) {
+  return String(value ?? "lecture")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "lecture";
+}
+
+function openSearchDialog() {
+  searchInputElement.value = "";
+  renderSearchResults();
+  searchDialog.showModal();
+  window.setTimeout(() => searchInputElement.focus(), 0);
+}
+
+function renderSearchResults() {
+  const query = searchInputElement.value.trim();
+  searchResultsElement.replaceChildren();
+  if (!query) {
+    const hint = document.createElement("p");
+    hint.className = "search-empty";
+    hint.textContent = t("searchHint");
+    searchResultsElement.append(hint);
+    return;
+  }
+
+  const results = searchWorkspace(query);
+  if (!results.length) {
+    const empty = document.createElement("p");
+    empty.className = "search-empty";
+    empty.textContent = t("searchEmpty");
+    searchResultsElement.append(empty);
+    return;
+  }
+
+  for (const result of results) {
+    const button = document.createElement("button");
+    button.className = "search-result";
+    button.type = "button";
+    button.innerHTML = `
+      <strong>${escapeHTML(result.subjectName)} / ${escapeHTML(result.sessionTitle)}</strong>
+      <span>${escapeHTML(result.source)}</span>
+      <small>${escapeHTML(result.snippet)}</small>
+    `;
+    button.addEventListener("click", () => {
+      searchDialog.close();
+      selectSession(result.subjectId, result.sessionId);
+    });
+    searchResultsElement.append(button);
+  }
+}
+
+function searchWorkspace(query) {
+  const workspace = getActiveWorkspace();
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!workspace || !terms.length) return [];
+
+  const results = [];
+  for (const subject of workspace.subjects ?? []) {
+    for (const session of subject.sessions ?? []) {
+      const fields = collectSearchFields(session);
+      for (const field of fields) {
+        const haystack = field.text.toLowerCase();
+        if (!terms.every((term) => haystack.includes(term))) continue;
+        results.push({
+          subjectId: subject.id,
+          subjectName: subject.name,
+          sessionId: session.id,
+          sessionTitle: session.title,
+          source: field.source,
+          snippet: createSearchSnippet(field.text, terms[0])
+        });
+        break;
+      }
+    }
+  }
+  return results.slice(0, 30);
+}
+
+function collectSearchFields(session) {
+  const fields = [];
+  if (session.title) fields.push({ source: t("defaultSessionPrefix"), text: session.title });
+  if (session.notes?.trim()) fields.push({ source: t("notesTitle"), text: session.notes });
+  for (const segment of session.segments ?? []) {
+    if (segment.text?.trim()) fields.push({ source: t("originalTab"), text: segment.text });
+  }
+  for (const [languageCode, translation] of Object.entries(session.translations ?? {})) {
+    if (translation?.trim()) fields.push({ source: getLanguageLabel(languageCode), text: translation });
+  }
+  for (const [summaryKey, summary] of Object.entries(getSessionSummaries(session))) {
+    if (summary?.trim()) fields.push({ source: formatSummaryExportLabel(summaryKey), text: summary });
+  }
+  return fields;
+}
+
+function createSearchSnippet(text, term) {
+  const compact = String(text ?? "").replace(/\s+/g, " ").trim();
+  const index = compact.toLowerCase().indexOf(term.toLowerCase());
+  if (index < 0) return compact.slice(0, 180);
+  const start = Math.max(0, index - 70);
+  const end = Math.min(compact.length, index + term.length + 110);
+  return `${start ? "..." : ""}${compact.slice(start, end)}${end < compact.length ? "..." : ""}`;
 }
 
 async function clearTranscript() {

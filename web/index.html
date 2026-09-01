@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=64">
+    <link rel="stylesheet" href="./styles.css?v=65">
     <title>Speech2Text</title>
   </head>
   <body>
@@ -52,6 +52,8 @@
             </div>
             <button id="toggle" class="action-button primary-action" type="button">🎙️ Start</button>
             <button id="copy-all" class="action-button secondary-action" type="button">⧉ Copy</button>
+            <button id="export-session" class="action-button secondary-action" type="button">⇩ Export</button>
+            <button id="search-workspace" class="action-button secondary-action" type="button">⌕ Search</button>
             <button id="clear" class="action-button secondary-action" type="button">× Clear</button>
           </div>
         </div>
@@ -183,6 +185,30 @@
         </div>
       </form>
     </dialog>
+    <dialog id="export-dialog" class="modal">
+      <form method="dialog" class="modal-card">
+        <h2 id="export-title">Export lecture</h2>
+        <p id="export-description" class="modal-message">Choose a formatted export.</p>
+        <div class="export-actions">
+          <button id="export-markdown" class="secondary-button" type="button">Markdown</button>
+          <button id="export-pdf" class="secondary-button" type="button">PDF</button>
+          <button id="export-word" class="secondary-button" type="button">Word</button>
+        </div>
+        <div class="modal-actions">
+          <button id="export-close" class="primary-button" type="button">Close</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="search-dialog" class="modal search-modal">
+      <form method="dialog" class="modal-card">
+        <h2 id="search-title">Search workspace</h2>
+        <input id="search-input" class="modal-input" type="search" autocomplete="off" placeholder="Search all lectures...">
+        <div id="search-results" class="search-results"></div>
+        <div class="modal-actions">
+          <button id="search-close" class="primary-button" type="button">Close</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="confirm-dialog" class="modal">
       <form id="confirm-form" method="dialog" class="modal-card">
         <h2 id="confirm-title">Confirm</h2>
@@ -193,6 +219,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=64"></script>
+    <script type="module" src="./app.js?v=65"></script>
   </body>
 </html>
