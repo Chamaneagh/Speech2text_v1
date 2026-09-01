@@ -287,7 +287,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 
 const toggleButton = document.querySelector("#toggle");
 const copyAllButton = document.querySelector("#copy-all");
-const copyOriginalButton = document.querySelector("#copy-original");
 const clearButton = document.querySelector("#clear");
 const coursePanelElement = document.querySelector("#course-panel");
 const coursePanelToggleButton = document.querySelector("#course-panel-toggle");
@@ -382,7 +381,6 @@ initializeAuth();
 
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
 copyAllButton.addEventListener("click", copyFullTranscript);
-copyOriginalButton.addEventListener("click", () => copyText(getTranscriptText(), t("originalCopied"), copyOriginalButton));
 clearButton.addEventListener("click", clearTranscript);
 coursePanelToggleButton.addEventListener("click", () => setCoursePanelCollapsed(true));
 coursePanelSummaryButton.addEventListener("click", () => setCoursePanelCollapsed(false));
@@ -431,6 +429,8 @@ async function startSession() {
     toggleButton.disabled = false;
     setActionButton(toggleButton, "⏹", t("stopShort"));
     toggleButton.classList.add("is-stop");
+    renderSegments();
+    renderLibrary();
     setStatus(t("listening"), "listening");
     hideActivity();
   } catch (error) {
@@ -469,8 +469,7 @@ function resetControls() {
   setRecordingLayout(RECORDING_PREVIEW);
   setActionButton(toggleButton, "🎙️", t("startShort"));
   toggleButton.classList.remove("is-stop");
-  interimElement.hidden = true;
-  interimElement.textContent = "";
+  hideInterimTranscript();
   setStatus(t("ready"), "idle");
   hideActivity();
   renderLibrary();
@@ -668,8 +667,7 @@ function handleMessage(message) {
   const interim = content.interimInputTranscription?.text;
   if (interim) {
     hasPendingInterim = true;
-    interimElement.hidden = false;
-    interimElement.textContent = interim;
+    showInterimTranscript(interim);
     addDiagnostic(t("interimReceived", { count: interim.length }));
   }
 
@@ -689,8 +687,7 @@ function handleMessage(message) {
     session.translations = {};
     saveLibrary();
     renderAll();
-    interimElement.hidden = true;
-    interimElement.textContent = "";
+    hideInterimTranscript();
     stopWaiter?.();
   }
 
@@ -861,7 +858,6 @@ function renderInterfaceText() {
   activeWorkspaceTitleElement.title = t("rename");
   if (!isListening && !isStopping) setActionButton(toggleButton, "🎙️", t("startShort"));
   setActionButton(copyAllButton, "⧉", t("copyAllShort"));
-  copyOriginalButton.textContent = t("copy");
   setActionButton(clearButton, "⌫", t("clearShort"));
   diagnosticsSummaryElement.textContent = t("technicalDetails");
   if (!diagnosticLines.length) diagnosticsElement.textContent = t("waiting");
@@ -1649,12 +1645,12 @@ function startInlineEdit(target, currentValue, onCommit) {
 
 function renderSegments() {
   const segments = getSegments();
+  const activeInterim = getActiveInterimText();
   transcriptElement.replaceChildren();
   copyAllButton.disabled = segments.length === 0;
-  copyOriginalButton.disabled = segments.length === 0;
   clearButton.disabled = segments.length === 0;
 
-  if (!segments.length) {
+  if (!segments.length && !activeInterim) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
     empty.textContent = t("empty");
@@ -1682,7 +1678,32 @@ function renderSegments() {
     paragraph.textContent = segment.text;
     transcriptElement.append(paragraph);
   }
+  if (activeInterim) showInterimTranscript(activeInterim);
   transcriptElement.parentElement.scrollTop = transcriptElement.parentElement.scrollHeight;
+}
+
+function showInterimTranscript(text) {
+  interimElement.hidden = true;
+  interimElement.textContent = text;
+  transcriptElement.querySelector(".empty-state")?.remove();
+  let liveInterim = transcriptElement.querySelector(".interim-inline");
+  if (!liveInterim) {
+    liveInterim = document.createElement("p");
+    liveInterim.className = "interim interim-inline";
+    transcriptElement.append(liveInterim);
+  }
+  liveInterim.textContent = text;
+  transcriptElement.parentElement.scrollTop = transcriptElement.parentElement.scrollHeight;
+}
+
+function hideInterimTranscript() {
+  interimElement.hidden = true;
+  interimElement.textContent = "";
+  transcriptElement.querySelector(".interim-inline")?.remove();
+}
+
+function getActiveInterimText() {
+  return isListening ? interimElement.textContent.trim() : "";
 }
 
 function scheduleTranscriptEditSave(textarea) {
