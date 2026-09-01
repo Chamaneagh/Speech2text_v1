@@ -13,7 +13,7 @@ const translateModels = (process.env.GEMINI_TRANSLATE_MODELS ?? "gemini-3.5-flas
   .map((model) => model.trim())
   .filter(Boolean);
 const translateTimeoutMs = Number(process.env.TRANSLATE_TIMEOUT_MS ?? 12_000);
-const serverVersion = "2026-08-30.auth-timeout";
+const serverVersion = "2026-09-01.mixed-translation";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -106,7 +106,7 @@ function parseJSONBody(body) {
 }
 
 function getSourceLanguageName(sourceLanguage) {
-  if (!sourceLanguage) return "the detected source language";
+  if (!sourceLanguage || sourceLanguage === "mixed") return "the detected language of each sentence or phrase";
   const baseLanguage = sourceLanguage.toLowerCase().split("-")[0];
   return targetLanguages.get(baseLanguage) ?? sourceLanguage;
 }
@@ -121,7 +121,8 @@ async function translateText({ text, targetLanguage, sourceLanguage }) {
   const sourceLanguageName = getSourceLanguageName(sourceLanguage);
   const prompt = [
     `Translate from ${sourceLanguageName} to ${targetLanguageName}.`,
-    "Return only the translation. Preserve meaning, names, numbers, and academic terms.",
+    `Detect the source language independently for each sentence or phrase, and translate every part that is not already natural ${targetLanguageName}.`,
+    "Return only the translation. Preserve meaning, names, numbers, academic terms, paragraph breaks, and useful line breaks.",
     text
   ].join("\n");
 

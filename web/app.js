@@ -29,6 +29,8 @@ const UI_STRINGS = {
     loadWorkspace: "Load",
     loadWorkspaceTitle: "Load workspace",
     activeWorkspace: "Active workspace",
+    collapseCoursePanel: "Collapse courses",
+    expandCoursePanel: "Show courses",
     newCourse: "Add Course",
     newSession: "Add",
     addCourseTooltip: "Add a course to this workspace",
@@ -43,6 +45,7 @@ const UI_STRINGS = {
     stopShort: "Stop",
     ready: "Ready",
     connecting: "Connecting…",
+    recordingPreparing: "Preparing recording…",
     microphonePrompt: "Waiting for microphone permission…",
     listening: "Listening",
     stopping: "Finalizing…",
@@ -55,6 +58,7 @@ const UI_STRINGS = {
     clearShort: "Clear",
     empty: "The lecture transcript will appear here.",
     detectedUnknown: "Detected language: unknown",
+    detectedMixed: "Detected language: mixed",
     detected: "Detected language: {language}",
     technicalDetails: "Technical details",
     waiting: "Waiting for a session.",
@@ -70,8 +74,8 @@ const UI_STRINGS = {
     notesTitle: "Notes",
     notesHint: "Saved automatically",
     notesPlaceholder: "Add notes while listening...",
-    editTranscriptSegment: "Edit transcript segment",
-    emptyTranscriptSegment: "A transcript segment cannot be empty.",
+    editTranscriptSegment: "Edit transcript",
+    emptyTranscriptSegment: "The transcript cannot be empty.",
     rename: "Double-click to rename",
     renameAria: "Rename",
     deleteSubject: "Delete course",
@@ -151,6 +155,8 @@ const UI_STRINGS = {
     loadWorkspace: "Charger",
     loadWorkspaceTitle: "Charger un workspace",
     activeWorkspace: "Workspace actif",
+    collapseCoursePanel: "Replier les cours",
+    expandCoursePanel: "Afficher les cours",
     newCourse: "Add Course",
     newSession: "Add",
     addCourseTooltip: "Ajouter un cours dans ce workspace",
@@ -165,6 +171,7 @@ const UI_STRINGS = {
     stopShort: "Arrêter",
     ready: "Prêt",
     connecting: "Connexion…",
+    recordingPreparing: "Préparation de l’enregistrement…",
     microphonePrompt: "Autorisation micro en attente…",
     listening: "Écoute en cours",
     stopping: "Finalisation…",
@@ -177,6 +184,7 @@ const UI_STRINGS = {
     clearShort: "Effacer",
     empty: "Les paroles du professeur apparaîtront ici.",
     detectedUnknown: "Langue détectée: inconnue",
+    detectedMixed: "Langue détectée: mixte",
     detected: "Langue détectée: {language}",
     technicalDetails: "Détails techniques",
     waiting: "En attente d'une session.",
@@ -192,8 +200,8 @@ const UI_STRINGS = {
     notesTitle: "Notes",
     notesHint: "Enregistrées automatiquement",
     notesPlaceholder: "Ajouter des notes pendant l'écoute...",
-    editTranscriptSegment: "Modifier ce passage de transcription",
-    emptyTranscriptSegment: "Un passage de transcription ne peut pas être vide.",
+    editTranscriptSegment: "Modifier la transcription",
+    emptyTranscriptSegment: "La transcription ne peut pas être vide.",
     rename: "Double-cliquer pour renommer",
     renameAria: "Renommer",
     deleteSubject: "Supprimer le cours",
@@ -281,6 +289,11 @@ const toggleButton = document.querySelector("#toggle");
 const copyAllButton = document.querySelector("#copy-all");
 const copyOriginalButton = document.querySelector("#copy-original");
 const clearButton = document.querySelector("#clear");
+const coursePanelElement = document.querySelector("#course-panel");
+const coursePanelToggleButton = document.querySelector("#course-panel-toggle");
+const coursePanelSummaryButton = document.querySelector("#course-panel-summary");
+const coursePanelArrowElement = document.querySelector("#course-panel-arrow");
+const coursePanelCurrentElement = document.querySelector("#course-panel-current");
 const newWorkspaceButton = document.querySelector("#new-workspace");
 const loadWorkspaceButton = document.querySelector("#load-workspace");
 const activeWorkspaceTitleElement = document.querySelector("#active-workspace-title");
@@ -300,6 +313,8 @@ const activeSubjectTitleElement = document.querySelector("#active-subject-title"
 const activeSessionTitleElement = document.querySelector("#active-session-title");
 const diagnosticsSummaryElement = document.querySelector("#diagnostics-summary");
 const disclaimerElement = document.querySelector("#disclaimer");
+const activityBannerElement = document.querySelector("#activity-banner");
+const activityTextElement = document.querySelector("#activity-text");
 const notesTitleElement = document.querySelector("#notes-title");
 const notesHintElement = document.querySelector("#notes-hint");
 const sessionNotesElement = document.querySelector("#session-notes");
@@ -354,6 +369,9 @@ let dialogMode = "subject";
 let syncTimer;
 let isSyncingCloud = false;
 let isApplyingCloudLibrary = false;
+let isCoursePanelCollapsed = false;
+let transcriptEditTimer;
+let wakeLock;
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let library = loadLibrary();
 
@@ -366,6 +384,8 @@ toggleButton.addEventListener("click", () => (isListening ? stopSession() : star
 copyAllButton.addEventListener("click", copyFullTranscript);
 copyOriginalButton.addEventListener("click", () => copyText(getTranscriptText(), t("originalCopied"), copyOriginalButton));
 clearButton.addEventListener("click", clearTranscript);
+coursePanelToggleButton.addEventListener("click", () => setCoursePanelCollapsed(true));
+coursePanelSummaryButton.addEventListener("click", () => setCoursePanelCollapsed(false));
 newWorkspaceButton.addEventListener("click", openWorkspaceDialog);
 loadWorkspaceButton.addEventListener("click", openWorkspaceSwitcher);
 workspaceCloseButton.addEventListener("click", () => workspaceDialog.close());
@@ -393,22 +413,29 @@ async function startSession() {
   }
   ensureActiveSession({ createSessionIfMissing: true });
   revealActiveSubject();
+  setCoursePanelCollapsed(true);
   renderAll();
   toggleButton.disabled = true;
   setRecordingLayout(true);
-  setStatus(t("connecting"), "connecting");
+  setStatus(t("microphonePrompt"), "connecting");
+  showActivity(t("microphonePrompt"));
 
   try {
+    await startAudioCapture();
+    showActivity(t("recordingPreparing"));
+    setStatus(t("connecting"), "connecting");
     const token = await requestToken();
     await openSocket(token);
-    setStatus(t("microphonePrompt"), "connecting");
-    await startAudioCapture();
+    await requestScreenWakeLock();
     isListening = true;
     toggleButton.disabled = false;
     setActionButton(toggleButton, "⏹", t("stopShort"));
     toggleButton.classList.add("is-stop");
     setStatus(t("listening"), "listening");
+    hideActivity();
   } catch (error) {
+    hideActivity();
+    await releaseScreenWakeLock();
     await cleanupAudio();
     socket?.close();
     socket = undefined;
@@ -427,6 +454,7 @@ async function stopSession() {
 
   await cleanupAudio();
   await finishTranscription();
+  await releaseScreenWakeLock();
 
   socket?.close();
   socket = undefined;
@@ -444,6 +472,10 @@ function resetControls() {
   interimElement.hidden = true;
   interimElement.textContent = "";
   setStatus(t("ready"), "idle");
+  hideActivity();
+  renderLibrary();
+  renderSegments();
+  renderTranslationPanel();
 }
 
 function setRecordingLayout(isRecording) {
@@ -474,12 +506,22 @@ function waitForFinalTranscription(waitMs) {
 
 async function handleUnexpectedClose() {
   await cleanupAudio();
+  await releaseScreenWakeLock();
   socket = undefined;
   stopWaiter?.();
   isStopping = false;
   isListening = false;
   showError(t("interrupted"));
   resetControls();
+}
+
+function showActivity(message) {
+  activityTextElement.textContent = message;
+  activityBannerElement.hidden = false;
+}
+
+function hideActivity() {
+  activityBannerElement.hidden = true;
 }
 
 async function requestToken() {
@@ -581,6 +623,29 @@ async function cleanupAudio() {
   audioSource = undefined;
   silentOutput = undefined;
   audioContext = undefined;
+}
+
+async function requestScreenWakeLock() {
+  if (!("wakeLock" in navigator) || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => {
+      wakeLock = undefined;
+    });
+  } catch {
+    wakeLock = undefined;
+  }
+}
+
+async function releaseScreenWakeLock() {
+  if (!wakeLock) return;
+  const lock = wakeLock;
+  wakeLock = undefined;
+  try {
+    await lock.release();
+  } catch {
+    // The browser may already have released it when the page lost focus.
+  }
 }
 
 async function readMessageData(data) {
@@ -756,10 +821,30 @@ function selectSession(subjectId, sessionId) {
   renderAll();
 }
 
+async function handleSessionRecord(subjectId, sessionId) {
+  const isActiveSession = subjectId === library.activeSubjectId && sessionId === library.activeSessionId;
+  if (isListening) {
+    if (isActiveSession) await stopSession();
+    else showError(t("stopBeforeSwitch"));
+    return;
+  }
+
+  const location = findSubjectLocation(subjectId);
+  if (!location) return;
+  library.activeWorkspaceId = location.workspace.id;
+  library.activeSubjectId = subjectId;
+  library.activeSessionId = sessionId;
+  clearError();
+  saveLibrary();
+  renderAll();
+  await startSession();
+}
+
 function renderAll() {
   ensureActiveSession();
   renderInterfaceText();
   renderHeader();
+  renderCoursePanelState();
   renderLibrary();
   renderWorkspaceSwitcher();
   renderSegments();
@@ -797,8 +882,26 @@ function renderInterfaceText() {
   sessionNotesElement.placeholder = t("notesPlaceholder");
   uiEnglishButton.dataset.active = uiLanguage === "en" ? "true" : "false";
   uiFrenchButton.dataset.active = uiLanguage === "fr" ? "true" : "false";
+  coursePanelToggleButton.title = t("collapseCoursePanel");
+  coursePanelToggleButton.setAttribute("aria-label", t("collapseCoursePanel"));
+  coursePanelSummaryButton.title = t("expandCoursePanel");
+  coursePanelSummaryButton.setAttribute("aria-label", t("expandCoursePanel"));
   renderAuthState();
   if (statusElement.dataset.state === "idle") setStatus(t("ready"), "idle");
+}
+
+function renderCoursePanelState() {
+  const subject = getActiveSubject();
+  const session = getActiveSession();
+  const label = [subject?.name, session?.title].filter(Boolean).join(" / ") || t("noLectureSelected");
+  coursePanelCurrentElement.textContent = label;
+  coursePanelArrowElement.textContent = isCoursePanelCollapsed ? "▾" : "▴";
+  coursePanelElement.dataset.collapsed = isCoursePanelCollapsed ? "true" : "false";
+}
+
+function setCoursePanelCollapsed(collapsed) {
+  isCoursePanelCollapsed = collapsed;
+  renderCoursePanelState();
 }
 
 function setInterfaceLanguage(language) {
@@ -1252,8 +1355,21 @@ function renderLibrary() {
         window.clearTimeout(pendingSessionSelect);
         startInlineEdit(button, session.title, (title) => renameSession(subject.id, session.id, title));
       });
+      const sessionRecordButton = document.createElement("button");
+      const isActiveRecording = isListening && subject.id === library.activeSubjectId && session.id === library.activeSessionId;
+      sessionRecordButton.className = "session-record-button";
+      sessionRecordButton.type = "button";
+      sessionRecordButton.textContent = isActiveRecording ? t("stopShort") : t("startShort");
+      sessionRecordButton.title = isActiveRecording ? t("stop") : t("start");
+      sessionRecordButton.setAttribute("aria-label", sessionRecordButton.title);
+      sessionRecordButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        window.clearTimeout(pendingSessionSelect);
+        handleSessionRecord(subject.id, session.id);
+      });
       sessionRow.append(
         button,
+        sessionRecordButton,
         renderOrderControls({
           name: session.title,
           canMoveUp: sessionIndex > 0,
@@ -1546,21 +1662,21 @@ function renderSegments() {
     return;
   }
   const canEdit = !isListening && !isStopping;
-  for (const segment of segments) {
-    if (canEdit) {
-      const textarea = document.createElement("textarea");
-      textarea.className = "transcript-segment transcript-edit";
-      textarea.value = segment.text;
-      textarea.rows = 1;
-      textarea.title = t("editTranscriptSegment");
-      textarea.setAttribute("aria-label", t("editTranscriptSegment"));
-      textarea.addEventListener("input", () => saveTranscriptSegmentEdit(segment.id, textarea));
-      textarea.addEventListener("blur", () => finishTranscriptSegmentEdit(textarea));
-      transcriptElement.append(textarea);
-      resizeTranscriptEdit(textarea);
-      continue;
-    }
+  if (canEdit) {
+    const textarea = document.createElement("textarea");
+    textarea.className = "transcript-segment transcript-edit transcript-edit-all";
+    textarea.value = getTranscriptText();
+    textarea.rows = 1;
+    textarea.title = t("editTranscriptSegment");
+    textarea.setAttribute("aria-label", t("editTranscriptSegment"));
+    textarea.addEventListener("input", () => scheduleTranscriptEditSave(textarea));
+    textarea.addEventListener("blur", () => commitTranscriptEdit(textarea));
+    transcriptElement.append(textarea);
+    resizeTranscriptEdit(textarea);
+    return;
+  }
 
+  for (const segment of segments) {
     const paragraph = document.createElement("p");
     paragraph.className = "transcript-segment";
     paragraph.textContent = segment.text;
@@ -1569,22 +1685,39 @@ function renderSegments() {
   transcriptElement.parentElement.scrollTop = transcriptElement.parentElement.scrollHeight;
 }
 
-function saveTranscriptSegmentEdit(segmentId, textarea) {
+function scheduleTranscriptEditSave(textarea) {
   resizeTranscriptEdit(textarea);
-  const session = getActiveSession();
-  const segment = session?.segments.find((item) => item.id === segmentId);
-  if (!session || !segment || !textarea.value.trim() || textarea.value === segment.text) return;
-
-  segment.text = textarea.value;
-  session.translations = {};
-  saveLibrary();
-  renderTranslationPanel();
+  window.clearTimeout(transcriptEditTimer);
+  transcriptEditTimer = window.setTimeout(() => saveTranscriptEdit(textarea.value), 600);
 }
 
-function finishTranscriptSegmentEdit(textarea) {
-  if (textarea.value.trim()) return;
-  showError(t("emptyTranscriptSegment"));
-  renderSegments();
+function commitTranscriptEdit(textarea) {
+  window.clearTimeout(transcriptEditTimer);
+  if (saveTranscriptEdit(textarea.value)) renderSegments();
+}
+
+function saveTranscriptEdit(value) {
+  const session = getActiveSession();
+  if (!session) return false;
+  const text = value.trim();
+  if (!text) {
+    showError(t("emptyTranscriptSegment"));
+    return false;
+  }
+  if (text === getTranscriptText().trim()) return true;
+
+  const firstSegment = session.segments[0];
+  session.segments = [{
+    id: firstSegment?.id ?? crypto.randomUUID(),
+    text,
+    sourceLanguage: getSourceLanguageForTranslation(),
+    createdAt: firstSegment?.createdAt ?? new Date().toISOString()
+  }];
+  session.translations = {};
+  clearError();
+  saveLibrary();
+  renderTranslationPanel();
+  return true;
 }
 
 function resizeTranscriptEdit(textarea) {
@@ -1608,8 +1741,11 @@ function saveSessionNotes() {
 function renderTranslationPanel() {
   const session = getActiveSession();
   const segments = getSegments();
-  const sourceLanguage = getDominantSourceLanguage();
-  languageElement.textContent = sourceLanguage
+  const sourceLanguage = getSourceLanguageForTranslation();
+  const dominantSourceLanguage = getDominantSourceLanguage();
+  languageElement.textContent = sourceLanguage === "mixed"
+    ? t("detectedMixed")
+    : dominantSourceLanguage
     ? t("detected", { language: getLanguageLabel(sourceLanguage) })
     : t("detectedUnknown");
 
@@ -1621,7 +1757,7 @@ function renderTranslationPanel() {
     button.className = "translation-button";
     button.type = "button";
     button.textContent = language.label;
-    button.disabled = !segments.length || sourceLanguage === language.code || translatingTo === language.code;
+    button.disabled = !segments.length || (sourceLanguage !== "mixed" && sourceLanguage === language.code) || translatingTo === language.code;
     button.addEventListener("click", () => translateTranscript(language.code));
     translateActionsElement.append(button);
   }
@@ -1662,7 +1798,7 @@ function getDominantSourceLanguage() {
   const counts = new Map();
   for (const segment of getSegments()) {
     const sourceLanguage = normalizeLanguageCode(segment.sourceLanguage);
-    if (!sourceLanguage) continue;
+    if (!sourceLanguage || sourceLanguage === "mixed") continue;
     counts.set(sourceLanguage, (counts.get(sourceLanguage) ?? 0) + 1);
   }
 
@@ -1678,6 +1814,19 @@ function getDominantSourceLanguage() {
   return dominant;
 }
 
+function getSourceLanguageForTranslation() {
+  const languages = new Set();
+  for (const segment of getSegments()) {
+    const sourceLanguage = normalizeLanguageCode(segment.sourceLanguage);
+    if (!sourceLanguage) continue;
+    if (sourceLanguage === "mixed") return "mixed";
+    languages.add(sourceLanguage);
+  }
+
+  if (languages.size > 1) return "mixed";
+  return [...languages][0] ?? "";
+}
+
 async function translateTranscript(targetLanguage) {
   clearError();
   if (!authSession?.access_token) {
@@ -1688,8 +1837,8 @@ async function translateTranscript(targetLanguage) {
   const session = getActiveSession();
   if (!session?.segments.length) return;
 
-  const sourceLanguage = getDominantSourceLanguage();
-  if (sourceLanguage === targetLanguage) return;
+  const sourceLanguage = getSourceLanguageForTranslation();
+  if (sourceLanguage !== "mixed" && sourceLanguage === targetLanguage) return;
   if (session.translations?.[targetLanguage]) return;
 
   translatingTo = targetLanguage;
