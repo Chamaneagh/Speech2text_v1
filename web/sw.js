@@ -1,5 +1,15 @@
-const CACHE_NAME = "speech2text-shell-v61";
-const SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest"];
+const CACHE_NAME = "speech2text-shell-v63";
+const SHELL = [
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./manifest.webmanifest",
+  "./assets/flags/gb.svg",
+  "./assets/flags/fr.svg",
+  "./assets/flags/jp.svg",
+  "./assets/flags/de.svg"
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));

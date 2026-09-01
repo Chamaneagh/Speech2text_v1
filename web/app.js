@@ -24,10 +24,10 @@ const LIVE_SESSION_ROTATE_MS = 8.5 * 60 * 1000;
 const MAX_QUEUED_AUDIO_CHUNKS = 120;
 const RECORDING_PREVIEW = new URLSearchParams(window.location.search).has("recordingPreview");
 const TRANSLATION_LANGUAGES = [
-  { code: "en", label: "English", shortLabel: "🇬🇧 EN" },
-  { code: "fr", label: "Français", shortLabel: "🇫🇷 FR" },
-  { code: "ja", label: "日本語", shortLabel: "🇯🇵 JA" },
-  { code: "de", label: "Deutsch", shortLabel: "🇩🇪 DE" }
+  { code: "en", label: "English", shortLabel: "EN" },
+  { code: "fr", label: "Français", shortLabel: "FR" },
+  { code: "ja", label: "日本語", shortLabel: "JA" },
+  { code: "de", label: "Deutsch", shortLabel: "DE" }
 ];
 const SUMMARY_PROFILES = [
   { code: "student" },
@@ -1160,6 +1160,8 @@ function renderInterfaceText() {
   sessionSummaryElement.placeholder = t("summaryPlaceholder");
   editSummaryButton.textContent = t("editSummary");
   copySummaryButton.textContent = t("copySummary");
+  renderLanguageButton(uiEnglishButton, "en", { showCode: false });
+  renderLanguageButton(uiFrenchButton, "fr", { showCode: false });
   renderSummaryProfileOptions();
   renderSummaryFoldState();
   uiEnglishButton.dataset.active = uiLanguage === "en" ? "true" : "false";
@@ -2071,7 +2073,8 @@ function renderTranscriptTabs() {
     const tab = button.dataset.transcriptTab;
     const isOriginal = tab === "original";
     const hasTranslation = !isOriginal && Boolean(session?.translations?.[tab]);
-    button.textContent = isOriginal ? t("originalTab") : getLanguageShortLabel(tab);
+    if (isOriginal) button.textContent = t("originalTab");
+    else renderLanguageButton(button, tab);
     button.dataset.active = activeTranscriptTab === tab ? "true" : "false";
     button.dataset.ready = isOriginal || hasTranslation ? "true" : "false";
     button.disabled = isListening || isStopping || translatingTo || (!isOriginal && !getSegments().length) || (!isOriginal && sourceLanguage !== "mixed" && sourceLanguage === tab);
@@ -2297,7 +2300,8 @@ function renderSummary() {
 
   for (const button of summaryLanguageButtons) {
     const language = button.dataset.summaryLanguage;
-    button.textContent = summarizingTo === language ? "..." : getLanguageShortLabel(language);
+    if (summarizingTo === language) button.textContent = "...";
+    else renderLanguageButton(button, language);
     button.disabled = !session || !hasTranscript || isListening || isStopping || Boolean(summarizingTo);
     button.dataset.active = summaryLanguage === language ? "true" : "false";
     button.title = `${t("generateSummary")} - ${getLanguageLabel(language)}`;
@@ -2848,6 +2852,30 @@ function getLanguageLabel(languageCode) {
 function getLanguageShortLabel(languageCode) {
   const normalized = normalizeLanguageCode(languageCode);
   return TRANSLATION_LANGUAGES.find((language) => language.code === normalized)?.shortLabel ?? languageCode;
+}
+
+function renderLanguageButton(button, languageCode, { showCode = true } = {}) {
+  const normalized = normalizeLanguageCode(languageCode);
+  const label = getLanguageLabel(normalized);
+  const code = getLanguageShortLabel(normalized);
+  button.replaceChildren();
+
+  const flag = document.createElement("img");
+  flag.className = "flag";
+  flag.src = `./assets/flags/${normalized === "en" ? "gb" : normalized}.svg`;
+  flag.alt = "";
+  flag.loading = "lazy";
+  flag.decoding = "async";
+  button.append(flag);
+
+  if (showCode) {
+    const text = document.createElement("span");
+    text.textContent = code;
+    button.append(text);
+  }
+
+  button.title = label;
+  button.setAttribute("aria-label", label);
 }
 
 function getActiveWorkspace() {

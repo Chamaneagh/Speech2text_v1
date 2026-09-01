@@ -129,6 +129,9 @@ button { font: inherit; }
   background: #1e293b;
   font-size: .86rem;
   font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .language-button[data-active="true"] {
@@ -810,6 +813,10 @@ body[data-text-size="large"] .translation-text {
   font-size: .74rem;
   font-weight: 800;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 .summary-language-button[data-active="true"] {
   background: #2563eb;
@@ -821,6 +828,20 @@ body[data-text-size="large"] .translation-text {
   border-radius: 8px;
   font-size: .74rem;
   font-weight: 800;
+}
+.transcript-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.flag {
+  width: 15px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .22);
+  object-fit: cover;
 }
 .notes-input,
 .summary-input {
