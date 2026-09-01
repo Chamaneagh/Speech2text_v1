@@ -10,6 +10,7 @@ const TARGET_SAMPLE_RATE = 16_000;
 const LIBRARY_KEY = "speech2text.library.v1";
 const UI_LANGUAGE_KEY = "speech2text.uiLanguage";
 const TEXT_SIZE_KEY = "speech2text.textSize";
+const SUMMARY_PROFILE_KEY = "speech2text.summaryProfile";
 const LEGACY_SEGMENTS_KEY = "speech2text.segments";
 const LEGACY_TRANSLATIONS_KEY = `${LEGACY_SEGMENTS_KEY}.translations`;
 const FINAL_TRANSCRIPT_WAIT_MS = 3_500;
@@ -23,10 +24,16 @@ const LIVE_SESSION_ROTATE_MS = 8.5 * 60 * 1000;
 const MAX_QUEUED_AUDIO_CHUNKS = 120;
 const RECORDING_PREVIEW = new URLSearchParams(window.location.search).has("recordingPreview");
 const TRANSLATION_LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "fr", label: "Français" },
-  { code: "ja", label: "日本語" },
-  { code: "de", label: "Deutsch" }
+  { code: "en", label: "English", shortLabel: "🇬🇧 EN" },
+  { code: "fr", label: "Français", shortLabel: "🇫🇷 FR" },
+  { code: "ja", label: "日本語", shortLabel: "🇯🇵 JA" },
+  { code: "de", label: "Deutsch", shortLabel: "🇩🇪 DE" }
+];
+const SUMMARY_PROFILES = [
+  { code: "student" },
+  { code: "business" },
+  { code: "meeting" },
+  { code: "research" }
 ];
 const UI_STRINGS = {
   en: {
@@ -71,6 +78,12 @@ const UI_STRINGS = {
     foldTranscript: "Collapse transcript",
     unfoldTranscript: "Show transcript",
     foldedTranscript: "{label} · {count} characters",
+    foldNotes: "Collapse notes",
+    unfoldNotes: "Show notes",
+    foldedNotes: "Notes · {count} characters",
+    foldSummary: "Collapse summary",
+    unfoldSummary: "Show summary",
+    foldedSummary: "{label} summary · {count} characters",
     empty: "The lecture transcript will appear here.",
     emptyTranslation: "Choose a language to generate a translation.",
     detectedUnknown: "Detected language: unknown",
@@ -84,6 +97,7 @@ const UI_STRINGS = {
     newWorkspaceTitle: "New workspace",
     workspaceName: "Workspace name",
     cancel: "Cancel",
+    close: "Close",
     create: "Create",
     confirmTitle: "Confirm",
     delete: "Delete",
@@ -91,13 +105,26 @@ const UI_STRINGS = {
     notesHint: "Saved automatically",
     notesPlaceholder: "Add notes while listening...",
     summaryTitle: "Summary",
-    summaryHint: "Generated study sheet",
+    summaryHint: "Generated summary · {profile}",
     summaryPlaceholder: "Generate a study sheet from this lecture.",
     generateSummary: "Generate",
     regenerateSummary: "Regenerate",
+    editSummary: "Edit",
+    summarySettings: "Summary settings",
+    summaryProfileTitle: "Summary settings",
+    summaryProfileDescription: "Choose the structure used to generate summaries.",
+    summaryProfileStudent: "Student",
+    summaryProfileStudentDescription: "Study sheet with main ideas, key concepts, important details, exam questions and vocabulary.",
+    summaryProfileBusiness: "Business",
+    summaryProfileBusinessDescription: "Business brief with context, decisions, action items, risks, opportunities and next steps.",
+    summaryProfileMeeting: "Meeting",
+    summaryProfileMeetingDescription: "Meeting notes with topics discussed, decisions, owners, open questions and follow-ups.",
+    summaryProfileResearch: "Research",
+    summaryProfileResearchDescription: "Analytical brief with thesis, evidence, methods, limitations and points to verify.",
     copySummary: "Copy",
     summaryCopied: "Summary copied.",
     summaryGenerating: "Generating study sheet…",
+    summaryGeneratingLanguage: "Generating {language} study sheet…",
     summaryRequested: "Study sheet requested.",
     summaryReady: "Study sheet ready",
     summaryReceived: "Study sheet received: {count} characters.",
@@ -171,10 +198,13 @@ const UI_STRINGS = {
     authSwitchToSignIn: "Sign-in",
     authSubmitSignIn: "Sign in",
     authSubmitSignUp: "Create account",
+    authResetPassword: "Forgot password?",
+    authResetSent: "Password reset email sent if this address exists.",
     authCheckEmail: "Account created. Check your email if confirmation is enabled.",
     authSignedIn: "Signed in.",
     authSignedOut: "Signed out.",
     authFailed: "Authentication failed.",
+    accountTitle: "Account",
     signInRequired: "Sign in before starting a lecture.",
     syncLoading: "Loading cloud library…",
     syncSaving: "Saving online…",
@@ -225,6 +255,12 @@ const UI_STRINGS = {
     foldTranscript: "Replier la transcription",
     unfoldTranscript: "Afficher la transcription",
     foldedTranscript: "{label} · {count} caractères",
+    foldNotes: "Replier les notes",
+    unfoldNotes: "Afficher les notes",
+    foldedNotes: "Notes · {count} caractères",
+    foldSummary: "Replier la fiche",
+    unfoldSummary: "Afficher la fiche",
+    foldedSummary: "Fiche {label} · {count} caractères",
     empty: "Les paroles du professeur apparaîtront ici.",
     emptyTranslation: "Choisis une langue pour générer une traduction.",
     detectedUnknown: "Langue détectée: inconnue",
@@ -238,6 +274,7 @@ const UI_STRINGS = {
     newWorkspaceTitle: "Nouveau workspace",
     workspaceName: "Nom du workspace",
     cancel: "Annuler",
+    close: "Fermer",
     create: "Créer",
     confirmTitle: "Confirmer",
     delete: "Supprimer",
@@ -245,13 +282,26 @@ const UI_STRINGS = {
     notesHint: "Enregistrées automatiquement",
     notesPlaceholder: "Ajouter des notes pendant l'écoute...",
     summaryTitle: "Fiche résumé",
-    summaryHint: "Fiche de révision générée",
+    summaryHint: "Fiche générée · {profile}",
     summaryPlaceholder: "Générer une fiche de révision à partir de cette séance.",
     generateSummary: "Générer",
     regenerateSummary: "Régénérer",
+    editSummary: "Modifier",
+    summarySettings: "Réglages de la fiche",
+    summaryProfileTitle: "Réglages de la fiche",
+    summaryProfileDescription: "Choisis la structure utilisée pour générer les fiches.",
+    summaryProfileStudent: "Étudiant",
+    summaryProfileStudentDescription: "Fiche de révision avec idées principales, notions clés, détails importants, questions possibles et vocabulaire.",
+    summaryProfileBusiness: "Business",
+    summaryProfileBusinessDescription: "Synthèse business avec contexte, décisions, actions, risques, opportunités et prochaines étapes.",
+    summaryProfileMeeting: "Réunion",
+    summaryProfileMeetingDescription: "Compte rendu avec sujets abordés, décisions, responsables, questions ouvertes et suivis.",
+    summaryProfileResearch: "Recherche",
+    summaryProfileResearchDescription: "Synthèse analytique avec thèse, preuves, méthodes, limites et points à vérifier.",
     copySummary: "Copier",
     summaryCopied: "Fiche résumé copiée.",
     summaryGenerating: "Génération de la fiche…",
+    summaryGeneratingLanguage: "Génération de la fiche en {language}…",
     summaryRequested: "Fiche résumé demandée.",
     summaryReady: "Fiche résumé prête",
     summaryReceived: "Fiche reçue: {count} caractères.",
@@ -325,10 +375,13 @@ const UI_STRINGS = {
     authSwitchToSignIn: "J'ai déjà un compte",
     authSubmitSignIn: "Connexion",
     authSubmitSignUp: "Créer le compte",
+    authResetPassword: "Mot de passe oublié ?",
+    authResetSent: "Email de réinitialisation envoyé si cette adresse existe.",
     authCheckEmail: "Compte créé. Vérifie tes emails si la confirmation est activée.",
     authSignedIn: "Connexion réussie.",
     authSignedOut: "Déconnexion réussie.",
     authFailed: "Authentification impossible.",
+    accountTitle: "Compte",
     signInRequired: "Connecte-toi avant de démarrer un cours.",
     syncLoading: "Chargement de la bibliothèque en ligne…",
     syncSaving: "Sauvegarde en ligne…",
@@ -367,6 +420,7 @@ const sidebarTitleElement = document.querySelector("#sidebar-title");
 const statusElement = document.querySelector("#status");
 const transcriptElement = document.querySelector("#transcript");
 const interimElement = document.querySelector("#interim");
+const transcriptCardElement = document.querySelector(".transcript-card");
 const transcriptFoldButton = document.querySelector("#transcript-fold");
 const transcriptFoldSummaryElement = document.querySelector("#transcript-fold-summary");
 const errorElement = document.querySelector("#error");
@@ -382,10 +436,19 @@ const activityTextElement = document.querySelector("#activity-text");
 const notesTitleElement = document.querySelector("#notes-title");
 const notesHintElement = document.querySelector("#notes-hint");
 const sessionNotesElement = document.querySelector("#session-notes");
+const notesPanelElement = document.querySelector(".notes-panel");
+const notesFoldButton = document.querySelector("#notes-fold");
+const notesFoldSummaryElement = document.querySelector("#notes-fold-summary");
 const summaryTitleElement = document.querySelector("#summary-title");
 const summaryHintElement = document.querySelector("#summary-hint");
+const summarySettingsButton = document.querySelector("#summary-settings");
 const sessionSummaryElement = document.querySelector("#session-summary");
+const sessionSummaryPreviewElement = document.querySelector("#session-summary-preview");
+const summaryPanelElement = document.querySelector(".summary-panel");
+const summaryFoldButton = document.querySelector("#summary-fold");
+const summaryFoldSummaryElement = document.querySelector("#summary-fold-summary");
 const summaryLanguageButtons = [...document.querySelectorAll("[data-summary-language]")];
+const editSummaryButton = document.querySelector("#edit-summary");
 const copySummaryButton = document.querySelector("#copy-summary");
 const subjectDialog = document.querySelector("#subject-dialog");
 const subjectForm = document.querySelector("#subject-form");
@@ -415,9 +478,20 @@ const authPasswordInput = document.querySelector("#auth-password");
 const authEmailLabelElement = document.querySelector("#auth-email-label");
 const authPasswordLabelElement = document.querySelector("#auth-password-label");
 const authErrorElement = document.querySelector("#auth-error");
+const authResetButton = document.querySelector("#auth-reset");
 const authSwitchButton = document.querySelector("#auth-switch");
 const authCancelButton = document.querySelector("#auth-cancel");
 const authSubmitButton = document.querySelector("#auth-submit");
+const accountDialog = document.querySelector("#account-dialog");
+const accountTitleElement = document.querySelector("#account-title");
+const accountEmailElement = document.querySelector("#account-email");
+const accountCloseButton = document.querySelector("#account-close");
+const accountSignOutButton = document.querySelector("#account-sign-out");
+const summaryProfileDialog = document.querySelector("#summary-profile-dialog");
+const summaryProfileTitleElement = document.querySelector("#summary-profile-title");
+const summaryProfileDescriptionElement = document.querySelector("#summary-profile-description");
+const summaryProfileListElement = document.querySelector("#summary-profile-list");
+const summaryProfileCloseButton = document.querySelector("#summary-profile-close");
 
 let socket;
 let mediaStream;
@@ -440,6 +514,9 @@ let translatingTo = "";
 let summarizingTo = "";
 let activeTranscriptTab = "original";
 let isTranscriptFolded = false;
+let isNotesFolded = false;
+let isSummaryFolded = false;
+let isSummaryEditing = false;
 let pendingSessionSelect;
 let authSession;
 let authMode = "signIn";
@@ -453,6 +530,7 @@ let transcriptEditTimer;
 let wakeLock;
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
+let summaryProfile = normalizeSummaryProfile(localStorage.getItem(SUMMARY_PROFILE_KEY));
 let library = loadLibrary();
 
 renderAll();
@@ -464,6 +542,9 @@ toggleButton.addEventListener("click", () => (isListening ? stopSession() : star
 copyAllButton.addEventListener("click", copyFullTranscript);
 clearButton.addEventListener("click", clearTranscript);
 transcriptFoldButton.addEventListener("click", toggleTranscriptFold);
+notesFoldButton.addEventListener("click", toggleNotesFold);
+summarySettingsButton.addEventListener("click", openSummaryProfileDialog);
+summaryFoldButton.addEventListener("click", toggleSummaryFold);
 for (const button of transcriptTabButtons) {
   button.addEventListener("click", () => selectTranscriptTab(button.dataset.transcriptTab));
 }
@@ -486,14 +567,20 @@ subjectCancelButton.addEventListener("click", () => subjectDialog.close());
 subjectForm.addEventListener("submit", createSubjectFromDialog);
 sessionNotesElement.addEventListener("input", saveSessionNotes);
 sessionSummaryElement.addEventListener("input", saveSessionSummary);
+sessionSummaryElement.addEventListener("blur", finishSummaryEdit);
+editSummaryButton.addEventListener("click", editSummary);
 for (const button of summaryLanguageButtons) {
   button.addEventListener("click", () => selectSummaryLanguage(button.dataset.summaryLanguage));
 }
 copySummaryButton.addEventListener("click", copySummary);
 authButton.addEventListener("click", handleAuthButton);
 authForm.addEventListener("submit", handleAuthSubmit);
+authResetButton.addEventListener("click", sendPasswordReset);
 authSwitchButton.addEventListener("click", toggleAuthMode);
 authCancelButton.addEventListener("click", () => authDialog.close());
+accountCloseButton.addEventListener("click", () => accountDialog.close());
+accountSignOutButton.addEventListener("click", signOut);
+summaryProfileCloseButton.addEventListener("click", () => summaryProfileDialog.close());
 
 async function startSession() {
   clearError();
@@ -972,6 +1059,7 @@ function createSessionRecord() {
     notes: "",
     summary: "",
     summaryLanguage: uiLanguage,
+    summaryProfile,
     summaries: {},
     translations: {}
   };
@@ -1052,15 +1140,28 @@ function renderInterfaceText() {
   confirmOkButton.textContent = t("delete");
   authEmailLabelElement.textContent = t("authEmail");
   authPasswordLabelElement.textContent = t("authPassword");
+  authResetButton.textContent = t("authResetPassword");
   authCancelButton.textContent = t("cancel");
+  accountTitleElement.textContent = t("accountTitle");
+  accountCloseButton.textContent = t("close");
+  accountSignOutButton.textContent = t("signOut");
   workspaceCloseButton.textContent = t("cancel");
   notesTitleElement.textContent = t("notesTitle");
   notesHintElement.textContent = t("notesHint");
   sessionNotesElement.placeholder = t("notesPlaceholder");
+  renderNotesFoldState();
   summaryTitleElement.textContent = t("summaryTitle");
-  summaryHintElement.textContent = t("summaryHint");
+  summaryHintElement.textContent = t("summaryHint", { profile: getSummaryProfileLabel(summaryProfile) });
+  summarySettingsButton.title = t("summarySettings");
+  summarySettingsButton.setAttribute("aria-label", t("summarySettings"));
+  summaryProfileTitleElement.textContent = t("summaryProfileTitle");
+  summaryProfileDescriptionElement.textContent = t("summaryProfileDescription");
+  summaryProfileCloseButton.textContent = t("close");
   sessionSummaryElement.placeholder = t("summaryPlaceholder");
+  editSummaryButton.textContent = t("editSummary");
   copySummaryButton.textContent = t("copySummary");
+  renderSummaryProfileOptions();
+  renderSummaryFoldState();
   uiEnglishButton.dataset.active = uiLanguage === "en" ? "true" : "false";
   uiFrenchButton.dataset.active = uiLanguage === "fr" ? "true" : "false";
   coursePanelToggleButton.title = t("collapseCoursePanel");
@@ -1162,8 +1263,12 @@ async function initializeAuth() {
 
 function renderAuthState() {
   const email = authSession?.user?.email;
-  authStateElement.textContent = email ? t("signedInAs", { email }) : t("localMode");
-  authButton.textContent = email ? t("signOut") : t("signIn");
+  authStateElement.textContent = email ? email : "";
+  authStateElement.hidden = true;
+  authButton.textContent = email ? "👤" : "↪";
+  authButton.title = email ? t("signedInAs", { email }) : t("signIn");
+  authButton.setAttribute("aria-label", authButton.title);
+  accountEmailElement.textContent = email ? t("signedInAs", { email }) : "";
   renderAuthDialog();
 }
 
@@ -1180,17 +1285,22 @@ async function handleAuthButton() {
   clearError();
   clearAuthError();
   if (authSession) {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      showError(error.message || t("authFailed"));
-      return;
-    }
-    setStatus(t("authSignedOut"), "idle");
+    accountDialog.showModal();
     return;
   }
 
   authMode = "signIn";
   openAuthDialog();
+}
+
+async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    showError(error.message || t("authFailed"));
+    return;
+  }
+  accountDialog.close();
+  setStatus(t("authSignedOut"), "idle");
 }
 
 function openAuthDialog() {
@@ -1226,6 +1336,27 @@ async function handleAuthSubmit(event) {
   setStatus(authMode === "signUp" && !data.session ? t("authCheckEmail") : t("authSignedIn"), "idle");
   renderAuthState();
   if (authSession) loadCloudLibrary();
+}
+
+async function sendPasswordReset() {
+  clearAuthError();
+  const email = authEmailInput.value.trim();
+  if (!email) {
+    showAuthError(t("authEmail"));
+    authEmailInput.focus();
+    return;
+  }
+
+  authResetButton.disabled = true;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin
+  });
+  authResetButton.disabled = false;
+  if (error) {
+    showAuthError(error.message || t("authFailed"));
+    return;
+  }
+  showAuthError(t("authResetSent"));
 }
 
 function toggleAuthMode() {
@@ -1313,6 +1444,7 @@ function applyCloudLibrary({ workspaces, courses, sessions, segments, translatio
         notes: session.notes ?? "",
         summary: session.summary ?? "",
         summaryLanguage: session.summary_language ?? uiLanguage,
+        summaryProfile: "student",
         summaries: normalizeSummaries(session.summaries, session.summary, session.summary_language),
         segments: (segmentsBySession.get(session.id) ?? []).map((segment) => ({
           id: segment.id,
@@ -1548,6 +1680,9 @@ function renderLibrary() {
       continue;
     }
 
+    const sessionList = document.createElement("div");
+    sessionList.className = "session-list";
+
     for (const [sessionIndex, session] of subject.sessions.entries()) {
       const sessionRow = document.createElement("div");
       sessionRow.className = "session-row";
@@ -1591,7 +1726,7 @@ function renderLibrary() {
           onDelete: () => deleteSession(subject.id, session.id)
         })
       );
-      subjectBlock.append(sessionRow);
+      sessionList.append(sessionRow);
     }
 
     const addSessionButton = document.createElement("button");
@@ -1601,7 +1736,8 @@ function renderLibrary() {
     addSessionButton.title = t("addSessionTooltip");
     addSessionButton.setAttribute("aria-label", t("addSessionTooltip"));
     addSessionButton.addEventListener("click", () => createSession(subject.id));
-    subjectBlock.append(addSessionButton);
+    sessionList.append(addSessionButton);
+    subjectBlock.append(sessionList);
 
     courseTreeElement.append(subjectBlock);
   }
@@ -1935,12 +2071,12 @@ function renderTranscriptTabs() {
     const tab = button.dataset.transcriptTab;
     const isOriginal = tab === "original";
     const hasTranslation = !isOriginal && Boolean(session?.translations?.[tab]);
-    button.textContent = isOriginal ? t("originalTab") : getLanguageLabel(tab);
+    button.textContent = isOriginal ? t("originalTab") : getLanguageShortLabel(tab);
     button.dataset.active = activeTranscriptTab === tab ? "true" : "false";
     button.dataset.ready = isOriginal || hasTranslation ? "true" : "false";
     button.disabled = isListening || isStopping || translatingTo || (!isOriginal && !getSegments().length) || (!isOriginal && sourceLanguage !== "mixed" && sourceLanguage === tab);
     button.title = isOriginal || hasTranslation
-      ? button.textContent
+      ? (isOriginal ? button.textContent : getLanguageLabel(tab))
       : t("translationRequested", { language: getLanguageLabel(tab) });
     button.setAttribute("aria-pressed", activeTranscriptTab === tab ? "true" : "false");
   }
@@ -1962,6 +2098,7 @@ function renderTranscriptFoldState() {
     count: String(activeText.length)
   });
   transcriptElement.hidden = isTranscriptFolded;
+  transcriptCardElement.dataset.folded = isTranscriptFolded ? "true" : "false";
 }
 
 function toggleTranscriptFold() {
@@ -2076,6 +2213,7 @@ function renderNotes() {
   const session = getActiveSession();
   sessionNotesElement.value = session?.notes ?? "";
   sessionNotesElement.disabled = !session;
+  renderNotesFoldState();
 }
 
 function saveSessionNotes() {
@@ -2083,6 +2221,60 @@ function saveSessionNotes() {
   if (!session) return;
   session.notes = sessionNotesElement.value;
   saveLibrary();
+  renderNotesFoldState();
+}
+
+function renderNotesFoldState() {
+  const session = getActiveSession();
+  const notes = session?.notes?.trim() ?? "";
+  notesFoldButton.disabled = !session;
+  notesFoldButton.textContent = isNotesFolded ? "▾" : "▴";
+  notesFoldButton.title = t(isNotesFolded ? "unfoldNotes" : "foldNotes");
+  notesFoldButton.setAttribute("aria-label", notesFoldButton.title);
+  notesFoldButton.setAttribute("aria-expanded", isNotesFolded ? "false" : "true");
+  notesFoldSummaryElement.hidden = !isNotesFolded;
+  notesFoldSummaryElement.textContent = t("foldedNotes", { count: String(notes.length) });
+  sessionNotesElement.hidden = isNotesFolded;
+  notesPanelElement.dataset.folded = isNotesFolded ? "true" : "false";
+}
+
+function toggleNotesFold() {
+  isNotesFolded = !isNotesFolded;
+  renderNotesFoldState();
+}
+
+function openSummaryProfileDialog() {
+  renderSummaryProfileOptions();
+  summaryProfileDialog.showModal();
+}
+
+function renderSummaryProfileOptions() {
+  summaryProfileListElement.innerHTML = SUMMARY_PROFILES.map((profile) => {
+    const checked = profile.code === summaryProfile ? " checked" : "";
+    return `
+      <label class="profile-option">
+        <input type="radio" name="summary-profile" value="${profile.code}"${checked}>
+        <span>
+          <strong>${getSummaryProfileLabel(profile.code)}</strong>
+          <small>${getSummaryProfileDescription(profile.code)}</small>
+        </span>
+      </label>
+    `;
+  }).join("");
+
+  for (const input of summaryProfileListElement.querySelectorAll("input[name='summary-profile']")) {
+    input.addEventListener("change", () => setSummaryProfile(input.value));
+  }
+}
+
+function setSummaryProfile(profileCode) {
+  const nextProfile = normalizeSummaryProfile(profileCode);
+  if (summaryProfile === nextProfile) return;
+  summaryProfile = nextProfile;
+  localStorage.setItem(SUMMARY_PROFILE_KEY, summaryProfile);
+  isSummaryEditing = false;
+  renderInterfaceText();
+  renderSummary();
 }
 
 function renderSummary() {
@@ -2090,18 +2282,28 @@ function renderSummary() {
   const hasTranscript = getSegments().length > 0;
   const summaryLanguage = getActiveSummaryLanguage(session);
   const summary = getSummaryText(session, summaryLanguage);
-  sessionSummaryElement.value = summary;
+  const isGeneratingCurrentSummary = summarizingTo === summaryLanguage && !summary.trim();
+  const displayText = isGeneratingCurrentSummary
+    ? t("summaryGeneratingLanguage", { language: getLanguageLabel(summaryLanguage) })
+    : summary;
+  const showPreview = Boolean(summary.trim()) && !isSummaryEditing && !isSummaryFolded && !isGeneratingCurrentSummary;
+  sessionSummaryElement.value = displayText;
+  sessionSummaryPreviewElement.innerHTML = showPreview ? renderMarkdown(summary) : "";
+  sessionSummaryPreviewElement.hidden = !showPreview;
+  sessionSummaryElement.hidden = isSummaryFolded || showPreview;
   sessionSummaryElement.disabled = !session || isListening || isStopping || Boolean(summarizingTo);
+  editSummaryButton.disabled = !summary.trim() || isListening || isStopping || Boolean(summarizingTo);
   copySummaryButton.disabled = !summary.trim() || Boolean(summarizingTo);
 
   for (const button of summaryLanguageButtons) {
     const language = button.dataset.summaryLanguage;
-    button.textContent = summarizingTo === language ? "..." : getLanguageLabel(language);
+    button.textContent = summarizingTo === language ? "..." : getLanguageShortLabel(language);
     button.disabled = !session || !hasTranscript || isListening || isStopping || Boolean(summarizingTo);
     button.dataset.active = summaryLanguage === language ? "true" : "false";
     button.title = `${t("generateSummary")} - ${getLanguageLabel(language)}`;
     button.setAttribute("aria-pressed", summaryLanguage === language ? "true" : "false");
   }
+  renderSummaryFoldState(summary, summaryLanguage);
 }
 
 function saveSessionSummary() {
@@ -2109,11 +2311,48 @@ function saveSessionSummary() {
   if (!session) return;
   const language = getActiveSummaryLanguage(session);
   const summaries = getSessionSummaries(session);
-  summaries[language] = sessionSummaryElement.value;
+  summaries[getSummaryStorageKey(language)] = sessionSummaryElement.value;
   session.summary = sessionSummaryElement.value;
   session.summaryLanguage = language;
+  session.summaryProfile = summaryProfile;
   saveLibrary();
   copySummaryButton.disabled = !sessionSummaryElement.value.trim();
+  renderSummaryFoldState(sessionSummaryElement.value, language);
+}
+
+function editSummary() {
+  if (isListening || isStopping || summarizingTo) return;
+  isSummaryEditing = true;
+  renderSummary();
+  sessionSummaryElement.focus();
+}
+
+function finishSummaryEdit() {
+  if (!isSummaryEditing) return;
+  isSummaryEditing = false;
+  renderSummary();
+}
+
+function renderSummaryFoldState(summary = getSummaryText(getActiveSession(), getActiveSummaryLanguage()), language = getActiveSummaryLanguage()) {
+  const session = getActiveSession();
+  const text = summary?.trim() ?? "";
+  summaryFoldButton.disabled = !session;
+  summaryFoldButton.textContent = isSummaryFolded ? "▾" : "▴";
+  summaryFoldButton.title = t(isSummaryFolded ? "unfoldSummary" : "foldSummary");
+  summaryFoldButton.setAttribute("aria-label", summaryFoldButton.title);
+  summaryFoldButton.setAttribute("aria-expanded", isSummaryFolded ? "false" : "true");
+  summaryFoldSummaryElement.hidden = !isSummaryFolded;
+  summaryFoldSummaryElement.textContent = t("foldedSummary", {
+    label: getLanguageLabel(language),
+    count: String(text.length)
+  });
+  summaryPanelElement.dataset.folded = isSummaryFolded ? "true" : "false";
+}
+
+function toggleSummaryFold() {
+  isSummaryFolded = !isSummaryFolded;
+  if (isSummaryFolded) isSummaryEditing = false;
+  renderSummary();
 }
 
 async function generateSummary(targetLanguage = uiLanguage) {
@@ -2130,7 +2369,9 @@ async function generateSummary(targetLanguage = uiLanguage) {
   if (!session || !subject || !text) return;
 
   const normalizedTargetLanguage = normalizeLanguageCode(targetLanguage) || uiLanguage;
+  isSummaryEditing = false;
   session.summaryLanguage = normalizedTargetLanguage;
+  session.summaryProfile = summaryProfile;
   summarizingTo = normalizedTargetLanguage;
   setStatus(t("summaryGenerating"), "connecting");
   addDiagnostic(t("summaryRequested"));
@@ -2147,6 +2388,7 @@ async function generateSummary(targetLanguage = uiLanguage) {
       body: JSON.stringify({
         text,
         targetLanguage: normalizedTargetLanguage,
+        summaryProfile,
         courseTitle: subject.name,
         sessionTitle: session.title
       })
@@ -2158,9 +2400,10 @@ async function generateSummary(targetLanguage = uiLanguage) {
     }
 
     const summaries = getSessionSummaries(session);
-    summaries[normalizedTargetLanguage] = result.summary;
+    summaries[getSummaryStorageKey(normalizedTargetLanguage)] = result.summary;
     session.summary = result.summary;
     session.summaryLanguage = normalizedTargetLanguage;
+    session.summaryProfile = summaryProfile;
     saveLibrary();
     addDiagnostic(t("summaryReceived", { count: result.summary.length }));
     setStatus(t("summaryReady"), "idle");
@@ -2182,9 +2425,25 @@ async function selectSummaryLanguage(targetLanguage) {
   const session = getActiveSession();
   const language = normalizeLanguageCode(targetLanguage) || uiLanguage;
   if (!session) return;
+  const summaries = getSessionSummaries(session);
+  const summaryKey = getSummaryStorageKey(language);
+  const existingSummary = summaries[summaryKey]?.trim() || (summaryProfile === "student" ? summaries[language]?.trim() : "") || "";
+  const sourceSummary = summaries[getSummaryStorageKey("en")]?.trim() || summaries.en?.trim() || session.summary?.trim() || "";
+  const isLikelyMigratedDuplicate = language !== "en" && existingSummary && sourceSummary && existingSummary === sourceSummary;
+  isSummaryEditing = false;
   session.summaryLanguage = language;
+  session.summaryProfile = summaryProfile;
+  if (existingSummary && !isLikelyMigratedDuplicate) session.summary = existingSummary;
   renderSummary();
-  if (!getSummaryText(session, language).trim()) await generateSummary(language);
+  if (!existingSummary || isLikelyMigratedDuplicate) {
+    if (isLikelyMigratedDuplicate) {
+      delete summaries[summaryKey];
+      delete summaries[language];
+      session.summary = "";
+      renderSummary();
+    }
+    await generateSummary(language);
+  }
   else saveLibrary();
 }
 
@@ -2378,8 +2637,8 @@ function formatTranscriptForExport() {
   }
 
   if (session.notes?.trim()) lines.push("", `[${t("notesTitle")}]`, session.notes.trim(), "");
-  for (const [languageCode, summary] of Object.entries(getSessionSummaries(session))) {
-    if (summary?.trim()) lines.push("", `[${t("summaryTitle")} - ${getLanguageLabel(languageCode)}]`, summary.trim(), "");
+  for (const [summaryKey, summary] of Object.entries(getSessionSummaries(session))) {
+    if (summary?.trim()) lines.push("", `[${formatSummaryExportLabel(summaryKey)}]`, summary.trim(), "");
   }
 
   for (const language of TRANSLATION_LANGUAGES) {
@@ -2438,6 +2697,115 @@ function normalizeTextSize(size) {
   return ["small", "medium", "large"].includes(size) ? size : "medium";
 }
 
+function normalizeSummaryProfile(profileCode) {
+  return SUMMARY_PROFILES.some((profile) => profile.code === profileCode) ? profileCode : "student";
+}
+
+function getSummaryProfileLabel(profileCode = summaryProfile) {
+  return t(`summaryProfile${toTitleCase(normalizeSummaryProfile(profileCode))}`);
+}
+
+function getSummaryProfileDescription(profileCode = summaryProfile) {
+  return t(`summaryProfile${toTitleCase(normalizeSummaryProfile(profileCode))}Description`);
+}
+
+function getSummaryStorageKey(languageCode = getActiveSummaryLanguage()) {
+  return `${normalizeSummaryProfile(summaryProfile)}:${normalizeLanguageCode(languageCode) || uiLanguage}`;
+}
+
+function formatSummaryExportLabel(summaryKey) {
+  const [profileCode, languageCode] = summaryKey.includes(":")
+    ? summaryKey.split(":")
+    : ["student", summaryKey];
+  return `${t("summaryTitle")} - ${getSummaryProfileLabel(profileCode)} - ${getLanguageLabel(languageCode)}`;
+}
+
+function toTitleCase(value) {
+  const text = String(value ?? "");
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : "";
+}
+
+function renderMarkdown(markdown) {
+  const lines = String(markdown ?? "").split(/\r?\n/);
+  const html = [];
+  let listType = "";
+  let paragraph = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+  const closeList = () => {
+    if (!listType) return;
+    html.push(`</${listType}>`);
+    listType = "";
+  };
+  const openList = (type) => {
+    if (listType === type) return;
+    closeList();
+    listType = type;
+    html.push(`<${type}>`);
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      closeList();
+      const level = heading[1].length + 2;
+      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bullet) {
+      flushParagraph();
+      openList("ul");
+      html.push(`<li>${renderInlineMarkdown(bullet[1])}</li>`);
+      continue;
+    }
+
+    const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (ordered) {
+      flushParagraph();
+      openList("ol");
+      html.push(`<li>${renderInlineMarkdown(ordered[1])}</li>`);
+      continue;
+    }
+
+    closeList();
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  closeList();
+  return html.join("");
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHTML(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function normalizeSummaries(value, legacySummary = "", legacyLanguage = "") {
   const summaries = value && typeof value === "object" && !Array.isArray(value) ? { ...value } : {};
   const language = normalizeLanguageCode(legacyLanguage) || uiLanguage;
@@ -2451,7 +2819,13 @@ function normalizeSummaries(value, legacySummary = "", legacyLanguage = "") {
 
 function getSessionSummaries(session) {
   if (!session) return {};
-  session.summaries = normalizeSummaries(session.summaries, session.summary, session.summaryLanguage);
+  const summaries = session.summaries && typeof session.summaries === "object" && !Array.isArray(session.summaries)
+    ? session.summaries
+    : {};
+  const hasStoredSummaries = Object.values(summaries).some((text) => typeof text === "string" && text.trim());
+  session.summaries = hasStoredSummaries
+    ? normalizeSummaries(summaries)
+    : normalizeSummaries(summaries, session.summary, session.summaryLanguage);
   return session.summaries;
 }
 
@@ -2461,12 +2835,19 @@ function getActiveSummaryLanguage(session = getActiveSession()) {
 
 function getSummaryText(session, language = getActiveSummaryLanguage(session)) {
   if (!session) return "";
-  return getSessionSummaries(session)[normalizeLanguageCode(language)] ?? "";
+  const summaries = getSessionSummaries(session);
+  const languageCode = normalizeLanguageCode(language);
+  return summaries[getSummaryStorageKey(languageCode)] ?? (summaryProfile === "student" ? summaries[languageCode] : "") ?? "";
 }
 
 function getLanguageLabel(languageCode) {
   const normalized = normalizeLanguageCode(languageCode);
   return TRANSLATION_LANGUAGES.find((language) => language.code === normalized)?.label ?? languageCode;
+}
+
+function getLanguageShortLabel(languageCode) {
+  const normalized = normalizeLanguageCode(languageCode);
+  return TRANSLATION_LANGUAGES.find((language) => language.code === normalized)?.shortLabel ?? languageCode;
 }
 
 function getActiveWorkspace() {
@@ -2588,6 +2969,7 @@ function normalizeSubjects(subjects) {
       notes: session.notes ?? "",
       summary: session.summary ?? "",
       summaryLanguage: normalizeLanguageCode(session.summaryLanguage) || uiLanguage,
+      summaryProfile: normalizeSummaryProfile(session.summaryProfile ?? "student"),
       summaries: normalizeSummaries(session.summaries, session.summary, session.summaryLanguage),
       segments: Array.isArray(session.segments)
         ? session.segments.map((segment) => ({

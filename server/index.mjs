@@ -18,12 +18,34 @@ const summaryModels = (process.env.GEMINI_SUMMARY_MODELS ?? "gemini-3.5-flash-li
   .map((model) => model.trim())
   .filter(Boolean);
 const summaryTimeoutMs = Number(process.env.SUMMARY_TIMEOUT_MS ?? 25_000);
-const serverVersion = "2026-09-01.summary-languages";
+const serverVersion = "2026-09-02.summary-profiles";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
   ["ja", "Japanese"],
   ["de", "German"]
+]);
+const summaryProfiles = new Map([
+  ["student", {
+    title: "Study Sheet",
+    instruction: "Use concise, useful wording for a student preparing exams.",
+    sections: ["Short Summary", "Main Ideas", "Key Concepts", "Important Details", "Possible Exam Questions", "Vocabulary"]
+  }],
+  ["business", {
+    title: "Business Brief",
+    instruction: "Write for a professional who needs clear decisions, priorities, risks and next actions.",
+    sections: ["Executive Summary", "Business Context", "Decisions", "Action Items", "Risks", "Opportunities", "Next Steps"]
+  }],
+  ["meeting", {
+    title: "Meeting Notes",
+    instruction: "Write as practical meeting notes that can be shared with participants after the discussion.",
+    sections: ["Overview", "Topics Discussed", "Decisions", "Action Items", "Open Questions", "Follow-ups"]
+  }],
+  ["research", {
+    title: "Research Brief",
+    instruction: "Write as an analytical research note, distinguishing claims, evidence and uncertainties.",
+    sections: ["Abstract", "Main Thesis", "Evidence", "Methods or Reasoning", "Limitations", "Points to Verify", "Further Questions"]
+  }]
 ]);
 
 if (!apiKey) {
@@ -178,20 +200,16 @@ async function generateTranslation({ model, prompt }) {
   }
 }
 
-async function summarizeText({ text, targetLanguage, courseTitle, sessionTitle }) {
+async function summarizeText({ text, targetLanguage, summaryProfile, courseTitle, sessionTitle }) {
   const targetLanguageName = targetLanguages.get(targetLanguage) ?? "English";
+  const profile = summaryProfiles.get(summaryProfile) ?? summaryProfiles.get("student");
   const prompt = [
-    `Create a structured study sheet in ${targetLanguageName} from this lecture transcript.`,
+    `Create a structured ${profile.title.toLowerCase()} in ${targetLanguageName} from this transcript.`,
     "Return only Markdown. Do not invent facts that are not supported by the transcript.",
-    "Use concise, useful wording for a student preparing exams.",
+    profile.instruction,
     "Include these sections:",
-    "# Study Sheet",
-    "## Short Summary",
-    "## Main Ideas",
-    "## Key Concepts",
-    "## Important Details",
-    "## Possible Exam Questions",
-    "## Vocabulary",
+    `# ${profile.title}`,
+    ...profile.sections.map((section) => `## ${section}`),
     "",
     `Course: ${courseTitle || "Unknown course"}`,
     `Lecture: ${sessionTitle || "Unknown lecture"}`,
@@ -269,7 +287,8 @@ const server = http.createServer(async (request, response) => {
       translateModels,
       translateTimeoutMs,
       summaryModels,
-      summaryTimeoutMs
+      summaryTimeoutMs,
+      summaryProfiles: [...summaryProfiles.keys()]
     });
     return;
   }
@@ -307,6 +326,7 @@ const server = http.createServer(async (request, response) => {
       const body = parseJSONBody(await readRequestBody(request));
       const text = typeof body.text === "string" ? body.text.trim() : "";
       const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage : "en";
+      const summaryProfile = typeof body.summaryProfile === "string" ? body.summaryProfile : "student";
       const courseTitle = typeof body.courseTitle === "string" ? body.courseTitle.trim() : "";
       const sessionTitle = typeof body.sessionTitle === "string" ? body.sessionTitle.trim() : "";
 
@@ -315,7 +335,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const summary = await summarizeText({ text, targetLanguage, courseTitle, sessionTitle });
+      const summary = await summarizeText({ text, targetLanguage, summaryProfile, courseTitle, sessionTitle });
       if (!summary) {
         sendJSON(response, 502, { error: "Gemini returned an empty summary" });
         return;

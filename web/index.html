@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=57">
+    <link rel="stylesheet" href="./styles.css?v=61">
     <title>Speech2Text</title>
   </head>
   <body>
@@ -19,11 +19,11 @@
         </button>
         <div class="sidebar-header">
           <h2 id="sidebar-title">Courses</h2>
-          <button id="course-panel-toggle" class="panel-toggle-button" type="button">▴</button>
           <div class="language-switch" aria-label="Interface language">
-            <button id="ui-en" class="language-button" type="button" aria-label="English">EN</button>
+            <button id="ui-en" class="language-button" type="button" aria-label="English">🇬🇧</button>
             <button id="ui-fr" class="language-button" type="button" aria-label="Français">🇫🇷</button>
           </div>
+          <button id="course-panel-toggle" class="panel-toggle-button" type="button">▴</button>
           <div class="workspace-bar">
             <button id="active-workspace-title" class="workspace-title" type="button">My Workspace</button>
             <button id="load-workspace" class="small-button" type="button">Load</button>
@@ -82,9 +82,13 @@
 
       <section class="notes-panel" aria-label="Lecture notes">
         <div class="notes-header">
-          <h2 id="notes-title">Notes</h2>
-          <span id="notes-hint">Saved automatically</span>
+          <div>
+            <h2 id="notes-title">Notes</h2>
+            <span id="notes-hint">Saved automatically</span>
+          </div>
+          <button id="notes-fold" class="fold-button" type="button">▴</button>
         </div>
+        <p id="notes-fold-summary" class="fold-summary" hidden>Notes</p>
         <textarea id="session-notes" class="notes-input" rows="4" placeholder="Add notes while listening..."></textarea>
       </section>
 
@@ -94,14 +98,21 @@
             <h2 id="summary-title">Summary</h2>
             <span id="summary-hint">Generated study sheet</span>
           </div>
-          <div class="summary-actions">
-            <button class="summary-language-button" type="button" data-summary-language="en">English</button>
-            <button class="summary-language-button" type="button" data-summary-language="fr">Français</button>
-            <button class="summary-language-button" type="button" data-summary-language="ja">日本語</button>
-            <button class="summary-language-button" type="button" data-summary-language="de">Deutsch</button>
-            <button id="copy-summary" class="secondary-button compact-button" type="button" disabled>Copy</button>
+          <div class="summary-header-actions">
+            <button id="summary-settings" class="fold-button" type="button">⚙</button>
+            <button id="summary-fold" class="fold-button" type="button">▴</button>
           </div>
         </div>
+        <div class="summary-actions">
+          <button class="summary-language-button" type="button" data-summary-language="en">English</button>
+          <button class="summary-language-button" type="button" data-summary-language="fr">Français</button>
+          <button class="summary-language-button" type="button" data-summary-language="ja">日本語</button>
+          <button class="summary-language-button" type="button" data-summary-language="de">Deutsch</button>
+          <button id="edit-summary" class="secondary-button compact-button" type="button" disabled>Edit</button>
+          <button id="copy-summary" class="secondary-button compact-button" type="button" disabled>Copy</button>
+        </div>
+        <p id="summary-fold-summary" class="fold-summary" hidden>Summary</p>
+        <div id="session-summary-preview" class="summary-preview" hidden></div>
         <textarea id="session-summary" class="summary-input" rows="8" placeholder="Generate a study sheet from this lecture."></textarea>
       </section>
 
@@ -144,9 +155,30 @@
         <input id="auth-password" class="modal-input" type="password" autocomplete="current-password" minlength="6" required>
         <p id="auth-error" class="modal-error" role="alert" hidden></p>
         <div class="modal-actions">
+          <button id="auth-reset" class="link-button" type="button">Forgot password?</button>
           <button id="auth-switch" class="link-button" type="button">Create account</button>
           <button id="auth-cancel" class="secondary-button" type="button">Cancel</button>
           <button id="auth-submit" class="primary-button" type="submit">Sign in</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="account-dialog" class="modal">
+      <form method="dialog" class="modal-card">
+        <h2 id="account-title">Account</h2>
+        <p id="account-email" class="modal-message"></p>
+        <div class="modal-actions">
+          <button id="account-close" class="secondary-button" type="button">Close</button>
+          <button id="account-sign-out" class="danger-button" type="button">Sign out</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="summary-profile-dialog" class="modal">
+      <form method="dialog" class="modal-card">
+        <h2 id="summary-profile-title">Summary settings</h2>
+        <p id="summary-profile-description" class="modal-message">Choose the structure used to generate summaries.</p>
+        <div id="summary-profile-list" class="profile-list"></div>
+        <div class="modal-actions">
+          <button id="summary-profile-close" class="primary-button" type="button">Close</button>
         </div>
       </form>
     </dialog>
@@ -160,6 +192,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=57"></script>
+    <script type="module" src="./app.js?v=61"></script>
   </body>
 </html>
