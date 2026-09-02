@@ -63,12 +63,27 @@ create table public.session_translations (
   unique (session_id, target_language)
 );
 
+create table public.admin_users (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table public.usage_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  event_type text not null check (event_type in ('transcription_session', 'translation', 'summary', 'speech_synthesis')),
+  quantity integer not null default 1 check (quantity > 0),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create index courses_user_order_idx on public.courses(user_id, sort_order, created_at);
 create index workspaces_user_order_idx on public.workspaces(user_id, sort_order, created_at);
 create index courses_workspace_order_idx on public.courses(workspace_id, sort_order, created_at);
 create index lecture_sessions_course_order_idx on public.lecture_sessions(course_id, sort_order, created_at);
 create index transcript_segments_session_order_idx on public.transcript_segments(session_id, sort_order, created_at);
 create index session_translations_session_idx on public.session_translations(session_id);
+create index usage_events_user_type_idx on public.usage_events(user_id, event_type, created_at);
 
 alter table public.user_preferences enable row level security;
 alter table public.workspaces enable row level security;
@@ -76,6 +91,8 @@ alter table public.courses enable row level security;
 alter table public.lecture_sessions enable row level security;
 alter table public.transcript_segments enable row level security;
 alter table public.session_translations enable row level security;
+alter table public.admin_users enable row level security;
+alter table public.usage_events enable row level security;
 
 grant usage on schema public to authenticated;
 
@@ -85,6 +102,7 @@ grant select, insert, update, delete on public.courses to authenticated;
 grant select, insert, update, delete on public.lecture_sessions to authenticated;
 grant select, insert, update, delete on public.transcript_segments to authenticated;
 grant select, insert, update, delete on public.session_translations to authenticated;
+grant select on public.usage_events to authenticated;
 
 create policy "Users can manage their preferences"
   on public.user_preferences
@@ -177,6 +195,11 @@ create policy "Users can manage their session translations"
       and lecture_sessions.user_id = auth.uid()
     )
   );
+
+create policy "Users can read their usage events"
+  on public.usage_events
+  for select
+  using (auth.uid() = user_id);
 
 create or replace function public.set_updated_at()
 returns trigger

@@ -6,6 +6,7 @@ const apiKey = process.env.GEMINI_API_KEY;
 const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:5173";
 const supabaseUrl = process.env.SUPABASE_URL ?? "https://jjdcjuxeuxbnxggxzbsl.supabase.co";
 const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY ?? "sb_publishable_81wK9xZIlCC9CBukLWIu-g_yx851dCK";
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const authRequired = process.env.AUTH_REQUIRED !== "false";
 const authTimeoutMs = Number(process.env.AUTH_TIMEOUT_MS ?? 8_000);
 const translateModels = (process.env.GEMINI_TRANSLATE_MODELS ?? "gemini-3.5-flash-lite,gemini-3.5-flash")
@@ -23,7 +24,7 @@ const ttsModels = (process.env.GEMINI_TTS_MODELS ?? "gemini-2.5-flash-preview-tt
   .map((model) => model.trim())
   .filter(Boolean);
 const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 45_000);
-const serverVersion = "2026-09-02.summary-notes-profiles";
+const serverVersion = "2026-09-02.admin-usage";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -80,6 +81,13 @@ class AuthError extends Error {
   }
 }
 
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
 async function authenticateRequest(request) {
   if (!authRequired) return undefined;
 
@@ -109,6 +117,63 @@ async function authenticateRequest(request) {
   if (!response.ok) throw new AuthError("Invalid or expired session");
   const user = await response.json().catch(() => undefined);
   if (!user?.id) throw new AuthError("Invalid Supabase user");
+  return user;
+}
+
+function requireServiceRole() {
+  if (!supabaseServiceRoleKey) {
+    throw new HttpError(503, "SUPABASE_SERVICE_ROLE_KEY is not configured");
+  }
+}
+
+function getServiceHeaders(extraHeaders = {}) {
+  requireServiceRole();
+  return {
+    apikey: supabaseServiceRoleKey,
+    Authorization: `Bearer ${supabaseServiceRoleKey}`,
+    ...extraHeaders
+  };
+}
+
+async function supabaseREST(path, { method = "GET", body, headers = {} } = {}) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    method,
+    headers: getServiceHeaders({
+      ...headers,
+      ...(body ? { "Content-Type": "application/json" } : {})
+    }),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    throw new HttpError(response.status, data?.message || data?.error || `Supabase REST ${response.status}`);
+  }
+  return data;
+}
+
+async function supabaseAuthAdmin(path, { method = "GET" } = {}) {
+  const response = await fetch(`${supabaseUrl}/auth/v1/admin/${path}`, {
+    method,
+    headers: getServiceHeaders()
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    throw new HttpError(response.status, data?.message || data?.error || `Supabase Auth ${response.status}`);
+  }
+  return data;
+}
+
+async function isAdminUser(userId) {
+  if (!userId || !supabaseServiceRoleKey) return false;
+  const rows = await supabaseREST(`admin_users?select=user_id&user_id=eq.${encodeURIComponent(userId)}&limit=1`);
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+async function requireAdmin(request) {
+  const user = await authenticateRequest(request);
+  if (!await isAdminUser(user.id)) throw new HttpError(403, "Admin access required");
   return user;
 }
 
@@ -400,13 +465,143 @@ function createWavBuffer(pcmBuffer, sampleRate, channels = 1, bitsPerSample = 16
   return Buffer.concat([header, pcmBuffer]);
 }
 
+async function logUsageEvent(userId, eventType, { quantity = 1, metadata = {} } = {}) {
+  if (!userId || !supabaseServiceRoleKey) return;
+  try {
+    await supabaseREST("usage_events", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: {
+        user_id: userId,
+        event_type: eventType,
+        quantity,
+        metadata
+      }
+    });
+  } catch (error) {
+    console.error("Unable to log usage event", error);
+  }
+}
+
+async function listAdminUsers(search = "") {
+  const authUsers = await listAuthUsers();
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredUsers = normalizedSearch
+    ? authUsers.filter((user) => {
+        const email = String(user.email ?? "").toLowerCase();
+        const id = String(user.id ?? "").toLowerCase();
+        return email.includes(normalizedSearch) || id.includes(normalizedSearch);
+      })
+    : authUsers;
+  const users = filteredUsers.slice(0, 50);
+  const stats = await getUserStats(users.map((user) => user.id).filter(Boolean));
+
+  return users.map((user) => ({
+    id: user.id,
+    email: user.email ?? "",
+    createdAt: user.created_at ?? user.createdAt ?? "",
+    lastSignInAt: user.last_sign_in_at ?? "",
+    emailConfirmedAt: user.email_confirmed_at ?? user.confirmed_at ?? "",
+    stats: stats.get(user.id) ?? createEmptyStats()
+  }));
+}
+
+async function listAuthUsers() {
+  const users = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const data = await supabaseAuthAdmin(`users?page=${page}&per_page=100`);
+    const pageUsers = Array.isArray(data?.users) ? data.users : (Array.isArray(data) ? data : []);
+    users.push(...pageUsers);
+    if (pageUsers.length < 100) break;
+  }
+  return users;
+}
+
+function createEmptyStats() {
+  return {
+    workspaces: 0,
+    courses: 0,
+    lectures: 0,
+    transcriptSegments: 0,
+    translations: 0,
+    translationGenerations: 0,
+    transcriptionSessions: 0,
+    summaries: 0,
+    speechSyntheses: 0,
+    aiTextGenerations: 0
+  };
+}
+
+async function getUserStats(userIds) {
+  const stats = new Map(userIds.map((userId) => [userId, createEmptyStats()]));
+  if (!userIds.length) return stats;
+  const filter = `user_id=in.(${userIds.join(",")})`;
+  const [workspaces, courses, sessions, segments, translations, usageEvents] = await Promise.all([
+    supabaseREST(`workspaces?select=user_id&${filter}`),
+    supabaseREST(`courses?select=user_id&${filter}`),
+    supabaseREST(`lecture_sessions?select=user_id&${filter}`),
+    supabaseREST(`transcript_segments?select=user_id&${filter}`),
+    supabaseREST(`session_translations?select=user_id&${filter}`),
+    supabaseREST(`usage_events?select=user_id,event_type,quantity&${filter}`)
+  ]);
+
+  incrementStats(stats, workspaces, "workspaces");
+  incrementStats(stats, courses, "courses");
+  incrementStats(stats, sessions, "lectures");
+  incrementStats(stats, segments, "transcriptSegments");
+  incrementStats(stats, translations, "translations");
+
+  for (const event of usageEvents ?? []) {
+    const userStats = stats.get(event.user_id);
+    if (!userStats) continue;
+    const quantity = Number.isFinite(Number(event.quantity)) ? Number(event.quantity) : 1;
+    if (event.event_type === "transcription_session") userStats.transcriptionSessions += quantity;
+    if (event.event_type === "summary") userStats.summaries += quantity;
+    if (event.event_type === "speech_synthesis") userStats.speechSyntheses += quantity;
+    if (event.event_type === "translation") userStats.translationGenerations += quantity;
+    if (event.event_type === "translation" || event.event_type === "summary") userStats.aiTextGenerations += quantity;
+  }
+
+  return stats;
+}
+
+function incrementStats(stats, rows, key) {
+  for (const row of rows ?? []) {
+    const userStats = stats.get(row.user_id);
+    if (userStats) userStats[key] += 1;
+  }
+}
+
+async function deleteUserAndData(userId) {
+  const encodedUserId = encodeURIComponent(userId);
+  const tables = [
+    "usage_events",
+    "session_translations",
+    "transcript_segments",
+    "lecture_sessions",
+    "courses",
+    "workspaces",
+    "user_preferences",
+    "admin_users"
+  ];
+
+  for (const table of tables) {
+    await supabaseREST(`${table}?user_id=eq.${encodedUserId}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" }
+    });
+  }
+
+  await supabaseAuthAdmin(`users/${encodedUserId}`, { method: "DELETE" });
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
       "Access-Control-Allow-Origin": webOrigin,
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization"
     });
     response.end();
@@ -417,7 +612,7 @@ const server = http.createServer(async (request, response) => {
     sendJSON(response, 200, {
       ok: true,
       version: serverVersion,
-      features: ["live-token", "translate", "summarize", "speech", "supabase-auth"],
+      features: ["live-token", "translate", "summarize", "speech", "supabase-auth", "admin"],
       authRequired,
       authTimeoutMs,
       translateModels,
@@ -426,14 +621,53 @@ const server = http.createServer(async (request, response) => {
       summaryTimeoutMs,
       ttsModels,
       ttsTimeoutMs,
-      summaryProfiles: [...summaryProfiles.keys()]
+      summaryProfiles: [...summaryProfiles.keys()],
+      adminEnabled: Boolean(supabaseServiceRoleKey)
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/me") {
+    try {
+      const user = await authenticateRequest(request);
+      sendJSON(response, 200, { admin: await isAdminUser(user.id) });
+    } catch (error) {
+      sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to verify admin access" });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/admin/users") {
+    try {
+      await requireAdmin(request);
+      const users = await listAdminUsers(url.searchParams.get("search") ?? "");
+      sendJSON(response, 200, { users });
+    } catch (error) {
+      if (error.statusCode !== 401 && error.statusCode !== 403) console.error("Unable to list admin users", error);
+      sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to list users" });
+    }
+    return;
+  }
+
+  const adminUserDeleteMatch = url.pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+  if (request.method === "DELETE" && adminUserDeleteMatch) {
+    try {
+      const admin = await requireAdmin(request);
+      const userId = decodeURIComponent(adminUserDeleteMatch[1]);
+      if (!userId) throw new HttpError(400, "User id is required");
+      if (userId === admin.id) throw new HttpError(400, "You cannot delete your own admin account from this screen");
+      await deleteUserAndData(userId);
+      sendJSON(response, 200, { ok: true });
+    } catch (error) {
+      if (error.statusCode !== 401 && error.statusCode !== 403) console.error("Unable to delete user", error);
+      sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to delete user" });
+    }
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/api/translate") {
     try {
-      await authenticateRequest(request);
+      const user = await authenticateRequest(request);
       const body = parseJSONBody(await readRequestBody(request));
       const text = typeof body.text === "string" ? body.text.trim() : "";
       const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage : "";
@@ -450,6 +684,14 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      await logUsageEvent(user?.id, "translation", {
+        metadata: {
+          targetLanguage,
+          sourceLanguage,
+          textCharacters: text.length,
+          translatedCharacters: translation.length
+        }
+      });
       sendJSON(response, 200, { translation });
     } catch (error) {
       if (error.statusCode !== 401) console.error("Unable to translate transcript", error);
@@ -460,7 +702,7 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/summarize") {
     try {
-      await authenticateRequest(request);
+      const user = await authenticateRequest(request);
       const body = parseJSONBody(await readRequestBody(request));
       const text = typeof body.text === "string" ? body.text.trim() : "";
       const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage : "en";
@@ -493,6 +735,14 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
+      await logUsageEvent(user?.id, "summary", {
+        metadata: {
+          targetLanguage,
+          summaryProfile,
+          textCharacters: text.length,
+          summaryCharacters: summary.length
+        }
+      });
       sendJSON(response, 200, { summary });
     } catch (error) {
       if (error.statusCode !== 401) console.error("Unable to summarize transcript", error);
@@ -503,7 +753,7 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/speech") {
     try {
-      await authenticateRequest(request);
+      const user = await authenticateRequest(request);
       const body = parseJSONBody(await readRequestBody(request));
       const text = typeof body.text === "string" ? body.text.trim() : "";
       const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage : "en";
@@ -514,6 +764,13 @@ const server = http.createServer(async (request, response) => {
       }
 
       const audio = await synthesizeSpeech({ text, targetLanguage });
+      await logUsageEvent(user?.id, "speech_synthesis", {
+        metadata: {
+          targetLanguage,
+          textCharacters: text.length,
+          audioBytes: audio.length
+        }
+      });
       response.writeHead(200, {
         "Content-Type": "audio/wav",
         "Content-Length": audio.length,
@@ -535,7 +792,7 @@ const server = http.createServer(async (request, response) => {
   }
 
   try {
-    await authenticateRequest(request);
+    const user = await authenticateRequest(request);
     const now = Date.now();
     const token = await client.authTokens.create({
       config: {
@@ -554,6 +811,11 @@ const server = http.createServer(async (request, response) => {
       }
     });
 
+    await logUsageEvent(user?.id, "transcription_session", {
+      metadata: {
+        model: "gemini-3.5-transcribe-live"
+      }
+    });
     sendJSON(response, 200, { token: token.name });
   } catch (error) {
     if (error.statusCode !== 401) console.error("Unable to create ephemeral token", error);

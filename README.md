@@ -19,6 +19,7 @@ The permanent Gemini API key must stay on a backend. The iOS app should receive 
 - `docs/DEPLOYMENT_PLAN.md` — Hostinger/Supabase/Render deployment plan.
 - `supabase/schema.sql` — first Supabase database and row-level-security schema.
 - `supabase/add_workspaces.sql` — migration that adds the Workspaces level above courses for existing Supabase projects.
+- `supabase/admin_usage.sql` — migration that adds admin users and usage-event tracking.
 - `web/` — recommended Windows-to-iPhone PWA prototype.
 - `ios/Speech2Text/` — native SwiftUI source skeleton for a future Mac/Xcode build.
 - `server/README.md` — token-broker contract and setup notes.

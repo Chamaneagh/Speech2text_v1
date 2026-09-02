@@ -213,6 +213,8 @@ The token broker must not be deployed as an unrestricted public endpoint. Before
 - The frontend can create local custom summary profiles. The user explicitly approved sending personal notes and custom summary profile structures to the Render broker/Gemini, so generated summaries can now use both.
 - Each lecture can store timestamped bookmarks. To avoid a Supabase migration, bookmarks are serialized inside the existing `lecture_sessions.summaries` JSON field under the reserved `__bookmarks` key; export and search ignore that key as a summary.
 - The account dialog supports password reset and an explicit resend-confirmation action. Supabase email confirmation still needs dashboard/SMTP verification because the MCP OAuth connection was unavailable during the last implementation pass.
+- An admin MVP is implemented through Render routes and a hidden account-dialog entry that appears only for users listed in `public.admin_users`. It can search users, display library/usage counters, and delete a non-current user with associated app data plus the Supabase Auth account.
+- Usage tracking is implemented in `public.usage_events`. Render logs successful `transcription_session`, `translation`, `summary`, and `speech_synthesis` events when `SUPABASE_SERVICE_ROLE_KEY` is configured.
 - The current Word export uses an editable `.doc` HTML document for compatibility, not a native `.docx` package.
 - The token broker currently has minimal protection and is suitable only for local development.
 - Ephemeral tokens and live sessions expire; lectures longer than one session require session resumption or reconnection logic.
@@ -231,11 +233,13 @@ The token broker must not be deployed as an unrestricted public endpoint. Before
 6. Run `supabase/schema.sql` in the Supabase SQL Editor.
 7. For an existing Supabase project, execute `supabase/add_workspaces.sql` before testing the updated app.
 8. Execute `supabase/grant_api_access.sql` if API grants are missing on the Supabase project.
-9. Test authenticated cloud sync from the browser with a real user account.
-10. Deploy the broker to Render and require a valid Supabase session before issuing Gemini tokens.
-11. Deploy the static PWA to Hostinger Premium over HTTPS and test on the iPhone in Safari.
-12. Add long-session reconnection/session resumption.
-12. Decide whether a native iOS build is worth the cost of a Mac or cloud macOS service.
+9. Execute `supabase/admin_usage.sql`, then insert the first administrator into `public.admin_users`.
+10. Add `SUPABASE_SERVICE_ROLE_KEY` to Render for admin routes and usage logging; never expose it in the frontend.
+11. Test authenticated cloud sync from the browser with a real user account.
+12. Deploy the broker to Render and require a valid Supabase session before issuing Gemini tokens.
+13. Deploy the static PWA to Hostinger Premium over HTTPS and test on the iPhone in Safari.
+14. Add long-session reconnection/session resumption.
+15. Decide whether a native iOS build is worth the cost of a Mac or cloud macOS service.
 
 ## Product direction after MVP
 

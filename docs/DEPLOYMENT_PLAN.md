@@ -73,9 +73,20 @@ GEMINI_API_KEY=...
 WEB_ORIGIN=https://floralwhite-pheasant-876581.hostingersite.com
 SUPABASE_URL=https://jjdcjuxeuxbnxggxzbsl.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
 The backend should reject `/api/live-token` and `/api/translate` requests that do not include a valid Supabase user session.
+The service-role key is used only by Render for admin routes and usage logging. It must never be uploaded to Hostinger or exposed in browser code.
+
+For the admin MVP, run `supabase/admin_usage.sql`, then add the first admin from the Supabase SQL editor:
+
+```sql
+insert into public.admin_users (user_id)
+values ('your-user-id');
+```
+
+The admin UI is then available from the account dialog for that user.
 
 ## Phase 4: Hostinger frontend
 

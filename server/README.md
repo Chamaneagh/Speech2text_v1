@@ -25,6 +25,7 @@ $env:GEMINI_API_KEY = "your-key"
 $env:WEB_ORIGIN = "http://localhost:5173"
 $env:SUPABASE_URL = "https://jjdcjuxeuxbnxggxzbsl.supabase.co"
 $env:SUPABASE_PUBLISHABLE_KEY = "sb_publishable_..."
+$env:SUPABASE_SERVICE_ROLE_KEY = "your-service-role-key"
 npm start
 ```
 
@@ -37,6 +38,8 @@ Authorization: Bearer <supabase-access-token>
 ```
 
 For a temporary local-only diagnostic run, authentication can be disabled with `AUTH_REQUIRED=false`, but this must never be used for a public deployment.
+
+Admin routes and usage logging require `SUPABASE_SERVICE_ROLE_KEY` on the server. Never expose that key in the PWA, Hostinger, or client-side JavaScript.
 
 The PWA also calls:
 
@@ -87,6 +90,23 @@ With JSON:
 ```
 
 Built-in `summaryProfile` values are `student`, `business`, `meeting`, and `research`. Unknown profile codes can use the custom title and sections fields.
+
+Successful calls to `/api/live-token`, `/api/translate`, `/api/summarize`, and `/api/speech` are logged in `public.usage_events` when `SUPABASE_SERVICE_ROLE_KEY` is configured.
+
+The PWA admin screen calls:
+
+```text
+GET /api/admin/me
+GET /api/admin/users?search=...
+DELETE /api/admin/users/:userId
+```
+
+These routes require a signed-in Supabase user whose id exists in `public.admin_users`. To enable the first admin, run `supabase/admin_usage.sql`, find your Supabase Auth user id, then insert it:
+
+```sql
+insert into public.admin_users (user_id)
+values ('your-user-id');
+```
 
 In a second PowerShell window, serve the PWA:
 

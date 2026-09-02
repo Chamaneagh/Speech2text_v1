@@ -4,6 +4,8 @@ const TOKEN_ENDPOINT = "https://speech2text-broker.onrender.com/api/live-token";
 const TRANSLATE_ENDPOINT = "https://speech2text-broker.onrender.com/api/translate";
 const SUMMARY_ENDPOINT = "https://speech2text-broker.onrender.com/api/summarize";
 const SPEECH_ENDPOINT = "https://speech2text-broker.onrender.com/api/speech";
+const ADMIN_ME_ENDPOINT = "https://speech2text-broker.onrender.com/api/admin/me";
+const ADMIN_USERS_ENDPOINT = "https://speech2text-broker.onrender.com/api/admin/users";
 const SUPABASE_URL = "https://jjdcjuxeuxbnxggxzbsl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_81wK9xZIlCC9CBukLWIu-g_yx851dCK";
 const MODEL = "gemini-3.5-transcribe-live";
@@ -254,6 +256,24 @@ const UI_STRINGS = {
     authSignedOut: "Signed out.",
     authFailed: "Authentication failed.",
     accountTitle: "Account",
+    adminOpen: "Admin",
+    adminTitle: "Administration",
+    adminDescription: "Search users, review usage, and delete an account with all its data.",
+    adminSearchPlaceholder: "Search by email or user id...",
+    adminLoad: "Refresh",
+    adminLoading: "Loading users...",
+    adminEmpty: "No user found.",
+    adminDeleteUser: "Delete user",
+    adminDeleteConfirm: "Delete {email} and all associated data? This cannot be undone.",
+    adminDeleted: "User deleted.",
+    adminAccessDenied: "Admin access is not available for this account.",
+    adminStatsWorkspaces: "Workspaces",
+    adminStatsCourses: "Courses",
+    adminStatsLectures: "Lectures",
+    adminStatsTranslations: "Translations",
+    adminStatsAiText: "AI text",
+    adminStatsSpeech: "Speech",
+    adminStatsTranscription: "Recordings",
     signInRequired: "Sign in before starting a lecture.",
     syncLoading: "Loading cloud library…",
     syncSaving: "Saving online…",
@@ -474,6 +494,24 @@ const UI_STRINGS = {
     authSignedOut: "Déconnexion réussie.",
     authFailed: "Authentification impossible.",
     accountTitle: "Compte",
+    adminOpen: "Admin",
+    adminTitle: "Administration",
+    adminDescription: "Rechercher des utilisateurs, consulter l'usage et supprimer un compte avec toutes ses données.",
+    adminSearchPlaceholder: "Rechercher par email ou id utilisateur...",
+    adminLoad: "Rafraîchir",
+    adminLoading: "Chargement des utilisateurs...",
+    adminEmpty: "Aucun utilisateur trouvé.",
+    adminDeleteUser: "Supprimer l'utilisateur",
+    adminDeleteConfirm: "Supprimer {email} et toutes ses données associées ? Cette action est irréversible.",
+    adminDeleted: "Utilisateur supprimé.",
+    adminAccessDenied: "L'accès admin n'est pas disponible pour ce compte.",
+    adminStatsWorkspaces: "Workspaces",
+    adminStatsCourses: "Cours",
+    adminStatsLectures: "Séances",
+    adminStatsTranslations: "Traductions",
+    adminStatsAiText: "Texte IA",
+    adminStatsSpeech: "Vocal",
+    adminStatsTranscription: "Enregistrements",
     signInRequired: "Connecte-toi avant de démarrer un cours.",
     syncLoading: "Chargement de la bibliothèque en ligne…",
     syncSaving: "Sauvegarde en ligne…",
@@ -588,8 +626,17 @@ const authSubmitButton = document.querySelector("#auth-submit");
 const accountDialog = document.querySelector("#account-dialog");
 const accountTitleElement = document.querySelector("#account-title");
 const accountEmailElement = document.querySelector("#account-email");
+const accountAdminButton = document.querySelector("#account-admin");
 const accountCloseButton = document.querySelector("#account-close");
 const accountSignOutButton = document.querySelector("#account-sign-out");
+const adminDialog = document.querySelector("#admin-dialog");
+const adminTitleElement = document.querySelector("#admin-title");
+const adminDescriptionElement = document.querySelector("#admin-description");
+const adminSearchInput = document.querySelector("#admin-search");
+const adminLoadButton = document.querySelector("#admin-load");
+const adminUsersElement = document.querySelector("#admin-users");
+const adminErrorElement = document.querySelector("#admin-error");
+const adminCloseButton = document.querySelector("#admin-close");
 const summaryProfileDialog = document.querySelector("#summary-profile-dialog");
 const summaryProfileTitleElement = document.querySelector("#summary-profile-title");
 const summaryProfileDescriptionElement = document.querySelector("#summary-profile-description");
@@ -646,6 +693,9 @@ let isSummaryEditing = false;
 let pendingSessionSelect;
 let authSession;
 let authMode = "signIn";
+let isAdmin = false;
+let adminUsers = [];
+let adminSearchTimer;
 let dialogMode = "subject";
 let syncTimer;
 let localSaveTimer;
@@ -716,8 +766,15 @@ authResetButton.addEventListener("click", sendPasswordReset);
 authResendButton.addEventListener("click", resendEmailConfirmation);
 authSwitchButton.addEventListener("click", toggleAuthMode);
 authCancelButton.addEventListener("click", () => authDialog.close());
+accountAdminButton.addEventListener("click", openAdminDialog);
 accountCloseButton.addEventListener("click", () => accountDialog.close());
 accountSignOutButton.addEventListener("click", signOut);
+adminLoadButton.addEventListener("click", () => loadAdminUsers(adminSearchInput.value));
+adminSearchInput.addEventListener("input", () => {
+  window.clearTimeout(adminSearchTimer);
+  adminSearchTimer = window.setTimeout(() => loadAdminUsers(adminSearchInput.value), 300);
+});
+adminCloseButton.addEventListener("click", () => adminDialog.close());
 summaryProfileCloseButton.addEventListener("click", () => summaryProfileDialog.close());
 exportMarkdownButton.addEventListener("click", () => exportCurrentSession("markdown"));
 exportPdfButton.addEventListener("click", () => exportCurrentSession("pdf"));
@@ -1300,8 +1357,14 @@ function renderInterfaceText() {
   authResendButton.textContent = t("authResendConfirmation");
   authCancelButton.textContent = t("cancel");
   accountTitleElement.textContent = t("accountTitle");
+  accountAdminButton.textContent = t("adminOpen");
   accountCloseButton.textContent = t("close");
   accountSignOutButton.textContent = t("signOut");
+  adminTitleElement.textContent = t("adminTitle");
+  adminDescriptionElement.textContent = t("adminDescription");
+  adminSearchInput.placeholder = t("adminSearchPlaceholder");
+  adminLoadButton.textContent = t("adminLoad");
+  adminCloseButton.textContent = t("close");
   workspaceCloseButton.textContent = t("cancel");
   bookmarksTitleElement.textContent = t("bookmarksTitle");
   bookmarksHintElement.textContent = t("bookmarksHint");
@@ -1431,12 +1494,18 @@ async function initializeAuth() {
   if (error) addDiagnostic(`Supabase auth: ${error.message}`);
   authSession = data?.session;
   renderAuthState();
+  checkAdminAccess();
   loadCloudLibraryOnce(authSession);
 
   supabase.auth.onAuthStateChange((_event, session) => {
     authSession = session;
     renderAuthState();
-    if (!session) cloudLibraryLoadedUserId = "";
+    checkAdminAccess();
+    if (!session) {
+      cloudLibraryLoadedUserId = "";
+      isAdmin = false;
+      adminUsers = [];
+    }
     loadCloudLibraryOnce(session);
   });
 }
@@ -1456,7 +1525,143 @@ function renderAuthState() {
   authButton.title = email ? t("signedInAs", { email }) : t("signIn");
   authButton.setAttribute("aria-label", authButton.title);
   accountEmailElement.textContent = email ? t("signedInAs", { email }) : "";
+  accountAdminButton.hidden = !isAdmin;
   renderAuthDialog();
+}
+
+async function checkAdminAccess() {
+  if (!authSession?.access_token) {
+    isAdmin = false;
+    renderAuthState();
+    return;
+  }
+
+  try {
+    const response = await fetch(ADMIN_ME_ENDPOINT, {
+      headers: getAuthenticatedHeaders()
+    });
+    const result = await response.json().catch(() => ({}));
+    isAdmin = response.ok && Boolean(result.admin);
+  } catch {
+    isAdmin = false;
+  }
+  renderAuthState();
+}
+
+async function openAdminDialog() {
+  if (!isAdmin) {
+    showError(t("adminAccessDenied"));
+    return;
+  }
+  accountDialog.close();
+  clearAdminError();
+  adminSearchInput.value = "";
+  adminUsers = [];
+  renderAdminUsers({ loading: true });
+  adminDialog.showModal();
+  window.setTimeout(() => adminSearchInput.focus(), 0);
+  await loadAdminUsers();
+}
+
+async function loadAdminUsers(search = "") {
+  if (!isAdmin || !authSession?.access_token) return;
+  clearAdminError();
+  renderAdminUsers({ loading: true });
+  try {
+    const url = new URL(ADMIN_USERS_ENDPOINT);
+    if (search.trim()) url.searchParams.set("search", search.trim());
+    const response = await fetch(url, {
+      headers: getAuthenticatedHeaders()
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || t("adminAccessDenied"));
+    adminUsers = Array.isArray(result.users) ? result.users : [];
+    renderAdminUsers();
+  } catch (error) {
+    adminUsers = [];
+    renderAdminUsers();
+    showAdminError(error.message || t("adminAccessDenied"));
+  }
+}
+
+function renderAdminUsers({ loading = false } = {}) {
+  adminUsersElement.replaceChildren();
+  if (loading) {
+    const item = document.createElement("p");
+    item.className = "search-empty";
+    item.textContent = t("adminLoading");
+    adminUsersElement.append(item);
+    return;
+  }
+
+  if (!adminUsers.length) {
+    const item = document.createElement("p");
+    item.className = "search-empty";
+    item.textContent = t("adminEmpty");
+    adminUsersElement.append(item);
+    return;
+  }
+
+  for (const user of adminUsers) {
+    const stats = user.stats ?? {};
+    const row = document.createElement("article");
+    row.className = "admin-user-card";
+    row.innerHTML = `
+      <div class="admin-user-main">
+        <strong>${escapeHTML(user.email || user.id)}</strong>
+        <small>${escapeHTML(user.id)}</small>
+      </div>
+      <div class="admin-stats">
+        ${renderAdminStat("adminStatsWorkspaces", stats.workspaces)}
+        ${renderAdminStat("adminStatsCourses", stats.courses)}
+        ${renderAdminStat("adminStatsLectures", stats.lectures)}
+        ${renderAdminStat("adminStatsTranslations", stats.translations)}
+        ${renderAdminStat("adminStatsAiText", stats.aiTextGenerations)}
+        ${renderAdminStat("adminStatsSpeech", stats.speechSyntheses)}
+        ${renderAdminStat("adminStatsTranscription", stats.transcriptionSessions)}
+      </div>
+      <button class="danger-button admin-delete-button" type="button">${escapeHTML(t("adminDeleteUser"))}</button>
+    `;
+    row.querySelector(".admin-delete-button").addEventListener("click", () => deleteAdminUser(user));
+    adminUsersElement.append(row);
+  }
+}
+
+function renderAdminStat(labelKey, value) {
+  return `
+    <span class="admin-stat">
+      <strong>${escapeHTML(String(value ?? 0))}</strong>
+      <small>${escapeHTML(t(labelKey))}</small>
+    </span>
+  `;
+}
+
+async function deleteAdminUser(user) {
+  const label = user.email || user.id;
+  if (!(await confirmAction(t("adminDeleteConfirm", { email: label })))) return;
+  clearAdminError();
+  try {
+    const response = await fetch(`${ADMIN_USERS_ENDPOINT}/${encodeURIComponent(user.id)}`, {
+      method: "DELETE",
+      headers: getAuthenticatedHeaders()
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || t("adminAccessDenied"));
+    setStatus(t("adminDeleted"), "idle");
+    await loadAdminUsers(adminSearchInput.value);
+  } catch (error) {
+    showAdminError(error.message || t("adminAccessDenied"));
+  }
+}
+
+function showAdminError(message) {
+  adminErrorElement.textContent = message;
+  adminErrorElement.hidden = false;
+}
+
+function clearAdminError() {
+  adminErrorElement.textContent = "";
+  adminErrorElement.hidden = true;
 }
 
 function renderAuthDialog() {

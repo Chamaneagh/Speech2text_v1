@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=74">
+    <link rel="stylesheet" href="./styles.css?v=77">
     <title>Speech2Text</title>
   </head>
   <body>
@@ -184,8 +184,24 @@
         <h2 id="account-title">Account</h2>
         <p id="account-email" class="modal-message"></p>
         <div class="modal-actions">
+          <button id="account-admin" class="secondary-button" type="button" hidden>Admin</button>
           <button id="account-close" class="secondary-button" type="button">Close</button>
           <button id="account-sign-out" class="danger-button" type="button">Sign out</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="admin-dialog" class="modal admin-modal">
+      <form method="dialog" class="modal-card">
+        <h2 id="admin-title">Administration</h2>
+        <p id="admin-description" class="modal-message">Search users, review usage, and delete an account with all its data.</p>
+        <div class="admin-search">
+          <input id="admin-search" class="modal-input" type="search" autocomplete="off" placeholder="Search by email or user id...">
+          <button id="admin-load" class="secondary-button" type="button">Refresh</button>
+        </div>
+        <div id="admin-users" class="admin-users"></div>
+        <p id="admin-error" class="modal-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button id="admin-close" class="primary-button" type="button">Close</button>
         </div>
       </form>
     </dialog>
@@ -245,6 +261,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=74"></script>
+    <script type="module" src="./app.js?v=77"></script>
   </body>
 </html>
