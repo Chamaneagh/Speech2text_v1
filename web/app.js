@@ -25,6 +25,7 @@ const QUIET_FINAL_WAIT_MS = 700;
 const TRANSLATION_TIMEOUT_MS = 30_000;
 const SUMMARY_TIMEOUT_MS = 60_000;
 const SPEECH_TIMEOUT_MS = 60_000;
+const SPEECH_CHUNK_MAX_CHARS = 700;
 const COPY_CONFIRMATION_MS = 1_200;
 const CLOUD_SYNC_DELAY_MS = 900;
 const LIVE_SAVE_DELAY_MS = 1_500;
@@ -112,6 +113,7 @@ const UI_STRINGS = {
     playSpeech: "Read translation aloud",
     stopSpeech: "Stop audio",
     speechGenerating: "Preparing audio…",
+    speechGeneratingPart: "Preparing audio {current}/{total}…",
     speechReady: "Audio ready",
     speechTapAgain: "Audio ready. Tap play again.",
     speechFailed: "Audio generation failed.",
@@ -350,6 +352,7 @@ const UI_STRINGS = {
     playSpeech: "Lire la traduction à voix haute",
     stopSpeech: "Arrêter l'audio",
     speechGenerating: "Préparation de l'audio…",
+    speechGeneratingPart: "Préparation audio {current}/{total}…",
     speechReady: "Audio prêt",
     speechTapAgain: "Audio prêt. Appuie à nouveau sur lecture.",
     speechFailed: "La génération audio a échoué.",
@@ -706,6 +709,7 @@ let isCoursePanelCollapsed = false;
 let transcriptEditTimer;
 let wakeLock;
 let speechAudio;
+let speechPlaybackToken = 0;
 const speechCache = new Map();
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
@@ -2590,41 +2594,79 @@ async function toggleSpeechPlayback() {
   }
 
   stopSpeechPlayback();
-  let url = speechCache.get(speechKey);
-  if (!url) {
-    url = await createSpeechAudioURL({ text, targetLanguage, speechKey });
-    if (!url) return;
-    speechCache.set(speechKey, url);
+  let urls = speechCache.get(speechKey);
+  if (!urls) {
+    urls = await createSpeechAudioURLs({ text, targetLanguage, speechKey });
+    if (!urls.length) return;
+    speechCache.set(speechKey, urls);
   }
 
-  speechAudio = new Audio(url);
-  speechAudio.dataset.speechKey = speechKey;
-  speechAudio.addEventListener("ended", () => {
+  playSpeechQueue(urls, speechKey, ++speechPlaybackToken);
+}
+
+function playSpeechQueue(urls, speechKey, playbackToken, index = 0) {
+  if (playbackToken !== speechPlaybackToken || index >= urls.length) {
     speechAudio = undefined;
     setStatus(t("speechReady"), "idle");
     renderSpeechButton();
+    return;
+  }
+
+  speechAudio = new Audio(urls[index]);
+  speechAudio.dataset.speechKey = speechKey;
+  speechAudio.addEventListener("ended", () => {
+    playSpeechQueue(urls, speechKey, playbackToken, index + 1);
   }, { once: true });
   speechAudio.addEventListener("pause", renderSpeechButton);
-  try {
-    await speechAudio.play();
-  } catch {
+  speechAudio.play().catch(() => {
     setStatus(t("speechTapAgain"), "idle");
-  }
+  });
   renderSpeechButton();
 }
 
-async function createSpeechAudioURL({ text, targetLanguage, speechKey }) {
+async function createSpeechAudioURLs({ text, targetLanguage, speechKey }) {
   clearError();
   if (!authSession?.access_token) {
     showError(t("signInRequired"));
     openAuthDialog();
-    return "";
+    return [];
   }
 
+  const chunks = splitTextForSpeech(text);
+  const urls = [];
   speakingKey = speechKey;
-  setStatus(t("speechGenerating"), "connecting");
   renderSpeechButton();
 
+  try {
+    for (const [index, chunk] of chunks.entries()) {
+      setStatus(t(chunks.length > 1 ? "speechGeneratingPart" : "speechGenerating", {
+        current: String(index + 1),
+        total: String(chunks.length)
+      }), "connecting");
+      addDiagnostic(t(chunks.length > 1 ? "speechGeneratingPart" : "speechGenerating", {
+        current: String(index + 1),
+        total: String(chunks.length)
+      }));
+      urls.push(await createSpeechAudioURL({ text: chunk, targetLanguage }));
+    }
+
+    setStatus(t("speechReady"), "idle");
+    return urls;
+  } catch (error) {
+    const message = error.name === "AbortError"
+      ? t("speechFailed")
+      : error.message || t("speechFailed");
+    showError(message);
+    setStatus(t("error"), "error");
+    for (const url of urls) URL.revokeObjectURL(url);
+    return [];
+  } finally {
+    speakingKey = "";
+    renderSpeechButton();
+  }
+}
+
+async function createSpeechAudioURL({ text, targetLanguage }) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), SPEECH_TIMEOUT_MS);
 
@@ -2642,23 +2684,48 @@ async function createSpeechAudioURL({ text, targetLanguage, speechKey }) {
     }
 
     const audioBlob = await response.blob();
-    setStatus(t("speechReady"), "idle");
+    addDiagnostic(`Speech HTTP ${response.status}: ${audioBlob.size} bytes`);
     return URL.createObjectURL(audioBlob);
-  } catch (error) {
-    const message = error.name === "AbortError"
-      ? t("speechFailed")
-      : error.message || t("speechFailed");
-    showError(message);
-    setStatus(t("error"), "error");
-    return "";
   } finally {
     window.clearTimeout(timeout);
-    speakingKey = "";
-    renderSpeechButton();
   }
 }
 
+function splitTextForSpeech(text) {
+  const paragraphs = String(text ?? "").split(/\n+/).map((part) => part.trim()).filter(Boolean);
+  const chunks = [];
+  let current = "";
+
+  for (const paragraph of paragraphs) {
+    const sentences = paragraph.match(/[^.!?。！？]+[.!?。！？]*/g) ?? [paragraph];
+    for (const sentence of sentences) {
+      const next = sentence.trim();
+      if (!next) continue;
+      if (current && `${current} ${next}`.length > SPEECH_CHUNK_MAX_CHARS) {
+        chunks.push(current);
+        current = "";
+      }
+      if (next.length > SPEECH_CHUNK_MAX_CHARS) {
+        const words = next.split(/\s+/);
+        for (const word of words) {
+          if (current && `${current} ${word}`.length > SPEECH_CHUNK_MAX_CHARS) {
+            chunks.push(current);
+            current = "";
+          }
+          current = current ? `${current} ${word}` : word;
+        }
+      } else {
+        current = current ? `${current} ${next}` : next;
+      }
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [text];
+}
+
 function stopSpeechPlayback() {
+  speechPlaybackToken += 1;
   if (!speechAudio) return;
   speechAudio.pause();
   speechAudio.currentTime = 0;
@@ -3719,9 +3786,9 @@ function hashText(text) {
 
 function clearSpeechCacheForSession(sessionId, language = "") {
   const prefix = language ? `${sessionId}:${language}:` : `${sessionId}:`;
-  for (const [key, url] of speechCache.entries()) {
+  for (const [key, urls] of speechCache.entries()) {
     if (!key.startsWith(prefix)) continue;
-    URL.revokeObjectURL(url);
+    for (const url of Array.isArray(urls) ? urls : [urls]) URL.revokeObjectURL(url);
     speechCache.delete(key);
   }
 }

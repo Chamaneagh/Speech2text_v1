@@ -23,8 +23,8 @@ const ttsModels = (process.env.GEMINI_TTS_MODELS ?? "gemini-2.5-flash-preview-tt
   .split(",")
   .map((model) => model.trim())
   .filter(Boolean);
-const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 45_000);
-const serverVersion = "2026-09-02.admin-usage";
+const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 75_000);
+const serverVersion = "2026-09-02.admin-usage-speech-timeout";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
