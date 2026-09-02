@@ -161,10 +161,11 @@ const UI_STRINGS = {
     customProfileTitle: "Custom profile",
     customProfileName: "Profile name",
     customProfileKeywords: "Sections or keywords",
-    customProfileKeywordsPlaceholder: "One section or keyword per line",
+    customProfileKeywordsPlaceholder: "One section or keyword per line, for example: Main ideas",
     customProfileAdd: "Add profile",
     customProfileDelete: "Delete profile",
     customProfileSaved: "Summary profile saved.",
+    customProfileMissing: "Enter a profile name or at least one section.",
     copySummary: "Copy",
     summaryCopied: "Summary copied.",
     summaryGenerating: "Generating study sheet…",
@@ -378,10 +379,11 @@ const UI_STRINGS = {
     customProfileTitle: "Profil personnalisé",
     customProfileName: "Nom du profil",
     customProfileKeywords: "Sections ou mots-clés",
-    customProfileKeywordsPlaceholder: "Une section ou un mot-clé par ligne",
+    customProfileKeywordsPlaceholder: "Une section ou un mot-clé par ligne, par exemple : Idées principales",
     customProfileAdd: "Ajouter le profil",
     customProfileDelete: "Supprimer le profil",
     customProfileSaved: "Profil de fiche enregistré.",
+    customProfileMissing: "Indique un nom de profil ou au moins une section.",
     copySummary: "Copier",
     summaryCopied: "Fiche résumé copiée.",
     summaryGenerating: "Génération de la fiche…",
@@ -1607,6 +1609,7 @@ async function loadCloudLibrary() {
     if (error) throw error;
 
     if (!workspacesResult.data.length && library.workspaces.length) {
+      prepareLibraryForCloudOwner(userId);
       isSyncingCloud = false;
       await syncLibraryToCloud({ announce: false });
       return;
@@ -1681,6 +1684,7 @@ function applyCloudLibrary({ workspaces, courses, sessions, segments, translatio
   isApplyingCloudLibrary = true;
   library = {
     workspaces: mappedWorkspaces.length ? mappedWorkspaces : [firstWorkspace],
+    cloudOwnerId: authSession?.user?.id ?? "",
     activeWorkspaceId: activeWorkspace.id,
     activeSubjectId: activeSubject?.id ?? "",
     activeSessionId: activeSession?.id ?? ""
@@ -1719,6 +1723,7 @@ async function syncLibraryToCloud({ announce = true } = {}) {
 
   try {
     const userId = authSession.user.id;
+    prepareLibraryForCloudOwner(userId);
     const workspaces = [];
     const courses = [];
     const sessions = [];
@@ -1803,6 +1808,8 @@ async function syncLibraryToCloud({ announce = true } = {}) {
     });
     if (preferenceError) throw preferenceError;
 
+    library.cloudOwnerId = userId;
+    flushLocalLibrarySave();
     if (announce) setStatus(t("syncSaved"), "idle");
   } catch (error) {
     addDiagnostic(`Supabase sync: ${error.message || t("syncFailed")}`);
@@ -2714,12 +2721,17 @@ function toggleSummaryNotesContext() {
 }
 
 function createCustomSummaryProfile() {
-  const name = customProfileNameInput.value.trim();
-  const sections = customProfileKeywordsInput.value
+  const rawName = customProfileNameInput.value.trim();
+  const rawSections = customProfileKeywordsInput.value
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  if (!name || !sections.length) return;
+  const name = rawName || rawSections[0] || "";
+  const sections = rawSections.length ? rawSections : (rawName ? [rawName] : []);
+  if (!name || !sections.length) {
+    showError(t("customProfileMissing"));
+    return;
+  }
 
   const profiles = loadCustomSummaryProfiles();
   const profile = {
@@ -3905,6 +3917,7 @@ function loadLibrary() {
   workspace.subjects = [subject];
   return {
     workspaces: [workspace],
+    cloudOwnerId: "",
     activeWorkspaceId: workspace.id,
     activeSubjectId: subject.id,
     activeSessionId: subject.sessions[0].id
@@ -3920,6 +3933,7 @@ function normalizeLibrary(value) {
         collapsed: Boolean(workspace.collapsed),
         subjects: normalizeSubjects(workspace.subjects)
       })),
+      cloudOwnerId: value.cloudOwnerId ?? "",
       activeWorkspaceId: value.activeWorkspaceId ?? value.workspaces[0]?.id ?? "",
       activeSubjectId: value.activeSubjectId ?? "",
       activeSessionId: value.activeSessionId ?? ""
@@ -3930,6 +3944,7 @@ function normalizeLibrary(value) {
   workspace.subjects = normalizeSubjects(value?.subjects);
   return {
     workspaces: [workspace],
+    cloudOwnerId: value?.cloudOwnerId ?? "",
     activeWorkspaceId: workspace.id,
     activeSubjectId: value?.activeSubjectId ?? workspace.subjects[0]?.id ?? "",
     activeSessionId: value?.activeSessionId ?? workspace.subjects[0]?.sessions[0]?.id ?? ""
@@ -3993,6 +4008,52 @@ function createDefaultSubject({ withSession = true } = {}) {
 
 function loadJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) ?? JSON.stringify(fallback)); } catch { return fallback; }
+}
+
+function prepareLibraryForCloudOwner(userId) {
+  if (!userId || library.cloudOwnerId === userId) return;
+
+  const activeWorkspaceId = library.activeWorkspaceId;
+  const activeSubjectId = library.activeSubjectId;
+  const activeSessionId = library.activeSessionId;
+  const workspaceIds = new Map();
+  const subjectIds = new Map();
+  const sessionIds = new Map();
+
+  library.workspaces = (library.workspaces ?? []).map((workspace) => {
+    const workspaceId = crypto.randomUUID();
+    workspaceIds.set(workspace.id, workspaceId);
+    return {
+      ...workspace,
+      id: workspaceId,
+      subjects: (workspace.subjects ?? []).map((subject) => {
+        const subjectId = crypto.randomUUID();
+        subjectIds.set(subject.id, subjectId);
+        return {
+          ...subject,
+          id: subjectId,
+          sessions: (subject.sessions ?? []).map((session) => {
+            const sessionId = crypto.randomUUID();
+            sessionIds.set(session.id, sessionId);
+            return {
+              ...session,
+              id: sessionId,
+              segments: (session.segments ?? []).map((segment) => ({
+                ...segment,
+                id: crypto.randomUUID()
+              }))
+            };
+          })
+        };
+      })
+    };
+  });
+
+  library.activeWorkspaceId = workspaceIds.get(activeWorkspaceId) ?? library.workspaces[0]?.id ?? "";
+  library.activeSubjectId = subjectIds.get(activeSubjectId) ?? getActiveSubject()?.id ?? "";
+  library.activeSessionId = sessionIds.get(activeSessionId) ?? getActiveSession()?.id ?? "";
+  library.cloudOwnerId = userId;
+  flushLocalLibrarySave();
 }
 
 function saveLibrary({ defer = false } = {}) {

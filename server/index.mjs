@@ -255,9 +255,10 @@ function getSummaryProfileConfig({ summaryProfile, summaryProfileTitle, summaryP
   if (builtIn) return builtIn;
 
   const title = cleanText(summaryProfileTitle, 80) || "Custom Summary";
-  const sections = Array.isArray(summaryProfileSections)
+  let sections = Array.isArray(summaryProfileSections)
     ? summaryProfileSections.map((section) => cleanText(section, 80)).filter(Boolean).slice(0, 12)
     : [];
+  if (!sections.length && title !== "Custom Summary") sections = [title];
 
   if (!sections.length) return summaryProfiles.get("student");
 
