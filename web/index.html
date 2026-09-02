@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=65">
+    <link rel="stylesheet" href="./styles.css?v=66">
     <title>Speech2Text</title>
   </head>
   <body>
@@ -51,6 +51,7 @@
               <button id="text-size-large" class="text-size-button" type="button">A+</button>
             </div>
             <button id="toggle" class="action-button primary-action" type="button">🎙️ Start</button>
+            <button id="bookmark-current" class="action-button secondary-action" type="button">⚑ Mark</button>
             <button id="copy-all" class="action-button secondary-action" type="button">⧉ Copy</button>
             <button id="export-session" class="action-button secondary-action" type="button">⇩ Export</button>
             <button id="search-workspace" class="action-button secondary-action" type="button">⌕ Search</button>
@@ -81,6 +82,18 @@
           <p class="empty-state">The lecture transcript will appear here.</p>
         </div>
         <p id="interim" class="interim" hidden></p>
+      </section>
+
+      <section class="bookmarks-panel" aria-label="Bookmarks">
+        <div class="bookmarks-header">
+          <div>
+            <h2 id="bookmarks-title">Bookmarks</h2>
+            <span id="bookmarks-hint">Mark important moments while recording</span>
+          </div>
+          <button id="bookmarks-fold" class="fold-button" type="button">▴</button>
+        </div>
+        <p id="bookmarks-fold-summary" class="fold-summary" hidden>Bookmarks</p>
+        <div id="bookmarks-list" class="bookmarks-list"></div>
       </section>
 
       <section class="notes-panel" aria-label="Lecture notes">
@@ -159,6 +172,7 @@
         <p id="auth-error" class="modal-error" role="alert" hidden></p>
         <div class="modal-actions">
           <button id="auth-reset" class="link-button" type="button">Forgot password?</button>
+          <button id="auth-resend" class="link-button" type="button">Resend confirmation</button>
           <button id="auth-switch" class="link-button" type="button">Create account</button>
           <button id="auth-cancel" class="secondary-button" type="button">Cancel</button>
           <button id="auth-submit" class="primary-button" type="submit">Sign in</button>
@@ -179,7 +193,19 @@
       <form method="dialog" class="modal-card">
         <h2 id="summary-profile-title">Summary settings</h2>
         <p id="summary-profile-description" class="modal-message">Choose the structure used to generate summaries.</p>
+        <label class="toggle-row">
+          <input id="summary-include-notes" type="checkbox">
+          <span id="summary-include-notes-label">Use personal notes when generating summaries</span>
+        </label>
         <div id="summary-profile-list" class="profile-list"></div>
+        <div class="custom-profile-form">
+          <h3 id="custom-profile-title">Custom profile</h3>
+          <label id="custom-profile-name-label" for="custom-profile-name">Profile name</label>
+          <input id="custom-profile-name" class="modal-input" type="text" autocomplete="off">
+          <label id="custom-profile-keywords-label" for="custom-profile-keywords">Sections or keywords</label>
+          <textarea id="custom-profile-keywords" class="modal-input modal-textarea" rows="4"></textarea>
+          <button id="custom-profile-add" class="secondary-button" type="button">Add profile</button>
+        </div>
         <div class="modal-actions">
           <button id="summary-profile-close" class="primary-button" type="button">Close</button>
         </div>
@@ -219,6 +245,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=65"></script>
+    <script type="module" src="./app.js?v=66"></script>
   </body>
 </html>

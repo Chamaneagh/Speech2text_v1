@@ -80,17 +80,21 @@ The first working version should:
 10. Organize local transcripts by workspace, course subject, and lecture session.
 11. Take free-form notes inside each lecture session while transcription is running.
 12. Delete lecture sessions, and delete course subjects only after their sessions have been removed.
+13. Generate formatted Markdown summaries with built-in summary profiles.
+14. Export lectures as Markdown, print/PDF, or editable Word-compatible HTML.
+15. Search by keyword across every lecture in the active workspace.
+16. Add timestamped bookmarks during a recording and include them in search/export.
 
 The following are deliberately postponed:
 
 - live French translation of every sentence;
-- summaries and question answering;
 - cloud account synchronization;
 - raw audio retention;
 - speaker identification;
 - background or locked-screen recording;
 - App Store distribution;
-- long-lecture session resumption.
+- true `.docx` generation;
+- direct AI use of personal notes/custom profile text until the user explicitly approves sending that content to the broker/Gemini.
 
 ## Repository layout
 
@@ -103,7 +107,7 @@ docs/DEPLOYMENT_PLAN.md
 web/
   index.html                 PWA page and French interface
   styles.css                 mobile-friendly visual design
-  app.js                     microphone, WebSocket, captions, translations, local subject/session library
+  app.js                     microphone, WebSocket, captions, translations, summaries, bookmarks, local subject/session library
   server.mjs                 simple Node static web server
   manifest.webmanifest       PWA metadata
   sw.js                      basic offline shell cache
@@ -185,8 +189,7 @@ The token broker must not be deployed as an unrestricted public endpoint. Before
 
 ## Known limitations and risks
 
-- The browser version has not yet been tested against a real Gemini API key.
-- The browser version has not yet been tested on an iPhone.
+- The browser/PWA version has been tested successfully on desktop and smartphone in the user's environment.
 - Transcript copy is implemented with a clipboard-first flow: the original transcript and each translated block have their own copy button, plus a global "Copier tout" action.
 - The PWA stores a local library in `speech2text.library.v1`, organized as workspaces containing course subjects, which contain lecture sessions. The UI displays one active workspace at a time; the sidebar tree only shows that workspace's courses and sessions. Older `speech2text.segments` data is migrated into a default workspace and default course on first load.
 - Each lecture session now also stores a local notes field. Notes are edited in a compact panel below the transcript, autosaved while typing, and included in the full copied export.
@@ -207,6 +210,12 @@ The token broker must not be deployed as an unrestricted public endpoint. Before
 - The stop flow now waits only briefly when no interim caption is pending, and waits longer only when a final transcript may still arrive. Diagnostics log concise lifecycle events instead of full Gemini JSON.
 - The finalized transcript can be translated on demand through `POST /api/translate`; the browser never receives the permanent Gemini API key. Translation controls are global, not repeated after each segment.
 - Translation defaults to fast text models (`gemini-3.5-flash-lite`, then `gemini-3.5-flash`) with per-model timeouts. Override with `GEMINI_TRANSLATE_MODELS` if needed.
+- Summaries are generated on demand through `POST /api/summarize`, stored per summary profile and language, and rendered from Markdown for reading. Built-in profiles include student, business, meeting, and research.
+- The frontend can create local custom summary profiles, but AI generation for custom profiles is intentionally blocked until the user explicitly approves sending the custom structure to the broker/Gemini.
+- The UI has a disabled "include personal notes" summary setting prepared for the next privacy-reviewed step. It should only be enabled when the user explicitly approves sending personal notes to the broker/Gemini as summary context.
+- Each lecture can store timestamped bookmarks. To avoid a Supabase migration, bookmarks are serialized inside the existing `lecture_sessions.summaries` JSON field under the reserved `__bookmarks` key; export and search ignore that key as a summary.
+- The account dialog supports password reset and an explicit resend-confirmation action. Supabase email confirmation still needs dashboard/SMTP verification because the MCP OAuth connection was unavailable during the last implementation pass.
+- The current Word export uses an editable `.doc` HTML document for compatibility, not a native `.docx` package.
 - The token broker currently has minimal protection and is suitable only for local development.
 - Ephemeral tokens and live sessions expire; lectures longer than one session require session resumption or reconnection logic.
 - Wi-Fi quality, classroom distance, accents, background noise, and technical vocabulary will affect accuracy.

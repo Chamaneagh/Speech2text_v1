@@ -12,6 +12,9 @@ const LIBRARY_KEY = "speech2text.library.v1";
 const UI_LANGUAGE_KEY = "speech2text.uiLanguage";
 const TEXT_SIZE_KEY = "speech2text.textSize";
 const SUMMARY_PROFILE_KEY = "speech2text.summaryProfile";
+const SUMMARY_INCLUDE_NOTES_KEY = "speech2text.summaryIncludeNotes";
+const CUSTOM_SUMMARY_PROFILES_KEY = "speech2text.customSummaryProfiles";
+const BOOKMARKS_SUMMARY_KEY = "__bookmarks";
 const LEGACY_SEGMENTS_KEY = "speech2text.segments";
 const LEGACY_TRANSLATIONS_KEY = `${LEGACY_SEGMENTS_KEY}.translations`;
 const FINAL_TRANSCRIPT_WAIT_MS = 3_500;
@@ -87,6 +90,16 @@ const UI_STRINGS = {
     searchPlaceholder: "Search all lectures...",
     searchEmpty: "No result.",
     searchHint: "Type a keyword to search this workspace.",
+    bookmarkAction: "Mark",
+    bookmarkTooltip: "Bookmark the current moment",
+    bookmarkAdded: "Bookmark added.",
+    bookmarksTitle: "Bookmarks",
+    bookmarksHint: "Mark important moments while recording",
+    bookmarksEmpty: "No bookmark yet.",
+    bookmarksFold: "Collapse bookmarks",
+    bookmarksUnfold: "Show bookmarks",
+    bookmarksFolded: "Bookmarks · {count}",
+    bookmarkDefault: "Bookmark {number}",
     clear: "Clear text",
     clearShort: "Clear",
     originalTab: "Original",
@@ -143,6 +156,15 @@ const UI_STRINGS = {
     summaryProfileMeetingDescription: "Meeting notes with topics discussed, decisions, owners, open questions and follow-ups.",
     summaryProfileResearch: "Research",
     summaryProfileResearchDescription: "Analytical brief with thesis, evidence, methods, limitations and points to verify.",
+    summaryIncludeNotes: "Use personal notes when generating summaries (needs permission)",
+    customProfileTitle: "Custom profile",
+    customProfileName: "Profile name",
+    customProfileKeywords: "Sections or keywords",
+    customProfileKeywordsPlaceholder: "One section or keyword per line",
+    customProfileAdd: "Add profile",
+    customProfileDelete: "Delete profile",
+    customProfileSaved: "Summary profile saved.",
+    customProfileServerPending: "Custom AI profiles need permission to send their structure to the server.",
     copySummary: "Copy",
     summaryCopied: "Summary copied.",
     summaryGenerating: "Generating study sheet…",
@@ -222,6 +244,8 @@ const UI_STRINGS = {
     authSubmitSignUp: "Create account",
     authResetPassword: "Forgot password?",
     authResetSent: "Password reset email sent if this address exists.",
+    authResendConfirmation: "Resend confirmation",
+    authConfirmationSent: "Confirmation email sent if this address is waiting for confirmation.",
     authCheckEmail: "Account created. Check your email if confirmation is enabled.",
     authSignedIn: "Signed in.",
     authSignedOut: "Signed out.",
@@ -284,6 +308,16 @@ const UI_STRINGS = {
     searchPlaceholder: "Rechercher dans toutes les séances...",
     searchEmpty: "Aucun résultat.",
     searchHint: "Entre un mot-clé pour chercher dans ce workspace.",
+    bookmarkAction: "Marquer",
+    bookmarkTooltip: "Marquer le moment en cours",
+    bookmarkAdded: "Marque-page ajouté.",
+    bookmarksTitle: "Marque-pages",
+    bookmarksHint: "Marquer les moments importants pendant l'enregistrement",
+    bookmarksEmpty: "Aucun marque-page pour le moment.",
+    bookmarksFold: "Replier les marque-pages",
+    bookmarksUnfold: "Afficher les marque-pages",
+    bookmarksFolded: "Marque-pages · {count}",
+    bookmarkDefault: "Marque-page {number}",
     clear: "Effacer le texte",
     clearShort: "Effacer",
     originalTab: "Original",
@@ -340,6 +374,15 @@ const UI_STRINGS = {
     summaryProfileMeetingDescription: "Compte rendu avec sujets abordés, décisions, responsables, questions ouvertes et suivis.",
     summaryProfileResearch: "Recherche",
     summaryProfileResearchDescription: "Synthèse analytique avec thèse, preuves, méthodes, limites et points à vérifier.",
+    summaryIncludeNotes: "Utiliser les notes personnelles pour générer les fiches (autorisation requise)",
+    customProfileTitle: "Profil personnalisé",
+    customProfileName: "Nom du profil",
+    customProfileKeywords: "Sections ou mots-clés",
+    customProfileKeywordsPlaceholder: "Une section ou un mot-clé par ligne",
+    customProfileAdd: "Ajouter le profil",
+    customProfileDelete: "Supprimer le profil",
+    customProfileSaved: "Profil de fiche enregistré.",
+    customProfileServerPending: "Les profils IA personnalisés nécessitent l'autorisation d'envoyer leur structure au serveur.",
     copySummary: "Copier",
     summaryCopied: "Fiche résumé copiée.",
     summaryGenerating: "Génération de la fiche…",
@@ -419,6 +462,8 @@ const UI_STRINGS = {
     authSubmitSignUp: "Créer le compte",
     authResetPassword: "Mot de passe oublié ?",
     authResetSent: "Email de réinitialisation envoyé si cette adresse existe.",
+    authResendConfirmation: "Renvoyer confirmation",
+    authConfirmationSent: "Email de confirmation envoyé si cette adresse est en attente de confirmation.",
     authCheckEmail: "Compte créé. Vérifie tes emails si la confirmation est activée.",
     authSignedIn: "Connexion réussie.",
     authSignedOut: "Déconnexion réussie.",
@@ -443,6 +488,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
 });
 
 const toggleButton = document.querySelector("#toggle");
+const bookmarkCurrentButton = document.querySelector("#bookmark-current");
 const copyAllButton = document.querySelector("#copy-all");
 const exportSessionButton = document.querySelector("#export-session");
 const searchWorkspaceButton = document.querySelector("#search-workspace");
@@ -484,6 +530,12 @@ const sessionNotesElement = document.querySelector("#session-notes");
 const notesPanelElement = document.querySelector(".notes-panel");
 const notesFoldButton = document.querySelector("#notes-fold");
 const notesFoldSummaryElement = document.querySelector("#notes-fold-summary");
+const bookmarksTitleElement = document.querySelector("#bookmarks-title");
+const bookmarksHintElement = document.querySelector("#bookmarks-hint");
+const bookmarksPanelElement = document.querySelector(".bookmarks-panel");
+const bookmarksFoldButton = document.querySelector("#bookmarks-fold");
+const bookmarksFoldSummaryElement = document.querySelector("#bookmarks-fold-summary");
+const bookmarksListElement = document.querySelector("#bookmarks-list");
 const summaryTitleElement = document.querySelector("#summary-title");
 const summaryHintElement = document.querySelector("#summary-hint");
 const summarySettingsButton = document.querySelector("#summary-settings");
@@ -524,6 +576,7 @@ const authEmailLabelElement = document.querySelector("#auth-email-label");
 const authPasswordLabelElement = document.querySelector("#auth-password-label");
 const authErrorElement = document.querySelector("#auth-error");
 const authResetButton = document.querySelector("#auth-reset");
+const authResendButton = document.querySelector("#auth-resend");
 const authSwitchButton = document.querySelector("#auth-switch");
 const authCancelButton = document.querySelector("#auth-cancel");
 const authSubmitButton = document.querySelector("#auth-submit");
@@ -535,8 +588,16 @@ const accountSignOutButton = document.querySelector("#account-sign-out");
 const summaryProfileDialog = document.querySelector("#summary-profile-dialog");
 const summaryProfileTitleElement = document.querySelector("#summary-profile-title");
 const summaryProfileDescriptionElement = document.querySelector("#summary-profile-description");
+const summaryIncludeNotesInput = document.querySelector("#summary-include-notes");
+const summaryIncludeNotesLabelElement = document.querySelector("#summary-include-notes-label");
 const summaryProfileListElement = document.querySelector("#summary-profile-list");
 const summaryProfileCloseButton = document.querySelector("#summary-profile-close");
+const customProfileTitleElement = document.querySelector("#custom-profile-title");
+const customProfileNameLabelElement = document.querySelector("#custom-profile-name-label");
+const customProfileNameInput = document.querySelector("#custom-profile-name");
+const customProfileKeywordsLabelElement = document.querySelector("#custom-profile-keywords-label");
+const customProfileKeywordsInput = document.querySelector("#custom-profile-keywords");
+const customProfileAddButton = document.querySelector("#custom-profile-add");
 const exportDialog = document.querySelector("#export-dialog");
 const exportTitleElement = document.querySelector("#export-title");
 const exportDescriptionElement = document.querySelector("#export-description");
@@ -558,6 +619,7 @@ let processor;
 let silentOutput;
 let isListening = false;
 let isStopping = false;
+let recordingStartedAt = 0;
 let isRotatingConnection = false;
 let stopAfterRotation = false;
 let audioSendPaused = false;
@@ -572,6 +634,7 @@ let summarizingTo = "";
 let speakingKey = "";
 let activeTranscriptTab = "original";
 let isTranscriptFolded = false;
+let isBookmarksFolded = false;
 let isNotesFolded = false;
 let isSummaryFolded = false;
 let isSummaryEditing = false;
@@ -590,6 +653,7 @@ let speechAudio;
 const speechCache = new Map();
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
+let includeNotesInSummary = localStorage.getItem(SUMMARY_INCLUDE_NOTES_KEY) === "true";
 let summaryProfile = normalizeSummaryProfile(localStorage.getItem(SUMMARY_PROFILE_KEY));
 let library = loadLibrary();
 
@@ -599,6 +663,7 @@ registerServiceWorker();
 initializeAuth();
 
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
+bookmarkCurrentButton.addEventListener("click", addCurrentBookmark);
 copyAllButton.addEventListener("click", copyFullTranscript);
 exportSessionButton.addEventListener("click", openExportDialog);
 searchWorkspaceButton.addEventListener("click", openSearchDialog);
@@ -606,6 +671,7 @@ clearButton.addEventListener("click", clearTranscript);
 speakTranscriptButton.addEventListener("click", toggleSpeechPlayback);
 transcriptFoldButton.addEventListener("click", toggleTranscriptFold);
 notesFoldButton.addEventListener("click", toggleNotesFold);
+bookmarksFoldButton.addEventListener("click", toggleBookmarksFold);
 summarySettingsButton.addEventListener("click", openSummaryProfileDialog);
 summaryFoldButton.addEventListener("click", toggleSummaryFold);
 for (const button of transcriptTabButtons) {
@@ -629,6 +695,8 @@ uiFrenchButton.addEventListener("click", () => setInterfaceLanguage("fr"));
 subjectCancelButton.addEventListener("click", () => subjectDialog.close());
 subjectForm.addEventListener("submit", createSubjectFromDialog);
 sessionNotesElement.addEventListener("input", saveSessionNotes);
+summaryIncludeNotesInput.addEventListener("change", toggleSummaryNotesContext);
+customProfileAddButton.addEventListener("click", createCustomSummaryProfile);
 sessionSummaryElement.addEventListener("input", saveSessionSummary);
 sessionSummaryElement.addEventListener("blur", finishSummaryEdit);
 editSummaryButton.addEventListener("click", editSummary);
@@ -639,6 +707,7 @@ copySummaryButton.addEventListener("click", copySummary);
 authButton.addEventListener("click", handleAuthButton);
 authForm.addEventListener("submit", handleAuthSubmit);
 authResetButton.addEventListener("click", sendPasswordReset);
+authResendButton.addEventListener("click", resendEmailConfirmation);
 authSwitchButton.addEventListener("click", toggleAuthMode);
 authCancelButton.addEventListener("click", () => authDialog.close());
 accountCloseButton.addEventListener("click", () => accountDialog.close());
@@ -678,6 +747,7 @@ async function startSession() {
     flushQueuedAudio();
     await requestScreenWakeLock();
     isListening = true;
+    recordingStartedAt = Date.now();
     toggleButton.disabled = false;
     setActionButton(toggleButton, "⏹", t("stopShort"));
     toggleButton.classList.add("is-stop");
@@ -725,6 +795,7 @@ async function stopSession() {
 
   isStopping = false;
   isListening = false;
+  recordingStartedAt = 0;
   resetControls();
 }
 
@@ -741,6 +812,7 @@ function resetControls() {
   queuedAudioChunks = [];
   plannedSocketCloses = new WeakSet();
   stopAfterRotation = false;
+  recordingStartedAt = isListening ? recordingStartedAt : 0;
   renderLibrary();
   renderSegments();
   renderTranscriptTabs();
@@ -835,6 +907,7 @@ async function handleUnexpectedClose() {
   stopWaiter?.();
   isStopping = false;
   isListening = false;
+  recordingStartedAt = 0;
   showError(t("interrupted"));
   resetControls();
 }
@@ -1127,6 +1200,7 @@ function createSessionRecord() {
     createdAt: new Date().toISOString(),
     segments: [],
     notes: "",
+    bookmarks: [],
     summary: "",
     summaryLanguage: uiLanguage,
     summaryProfile,
@@ -1181,6 +1255,7 @@ function renderAll() {
   renderLibrary();
   renderWorkspaceSwitcher();
   renderSegments();
+  renderBookmarks();
   renderNotes();
   renderSummary();
   renderTranscriptTabs();
@@ -1194,6 +1269,9 @@ function renderInterfaceText() {
   workspaceDialogTitleElement.textContent = t("loadWorkspaceTitle");
   activeWorkspaceTitleElement.title = t("rename");
   if (!isListening && !isStopping) setActionButton(toggleButton, "🎙️", t("startShort"));
+  setActionButton(bookmarkCurrentButton, "⚑", t("bookmarkAction"));
+  bookmarkCurrentButton.title = t("bookmarkTooltip");
+  bookmarkCurrentButton.setAttribute("aria-label", t("bookmarkTooltip"));
   setActionButton(copyAllButton, "⧉", t("copyAllShort"));
   setActionButton(exportSessionButton, "⇩", t("exportSession"));
   setActionButton(searchWorkspaceButton, "⌕", t("searchWorkspace"));
@@ -1213,11 +1291,15 @@ function renderInterfaceText() {
   authEmailLabelElement.textContent = t("authEmail");
   authPasswordLabelElement.textContent = t("authPassword");
   authResetButton.textContent = t("authResetPassword");
+  authResendButton.textContent = t("authResendConfirmation");
   authCancelButton.textContent = t("cancel");
   accountTitleElement.textContent = t("accountTitle");
   accountCloseButton.textContent = t("close");
   accountSignOutButton.textContent = t("signOut");
   workspaceCloseButton.textContent = t("cancel");
+  bookmarksTitleElement.textContent = t("bookmarksTitle");
+  bookmarksHintElement.textContent = t("bookmarksHint");
+  renderBookmarksFoldState();
   notesTitleElement.textContent = t("notesTitle");
   notesHintElement.textContent = t("notesHint");
   sessionNotesElement.placeholder = t("notesPlaceholder");
@@ -1228,7 +1310,15 @@ function renderInterfaceText() {
   summarySettingsButton.setAttribute("aria-label", t("summarySettings"));
   summaryProfileTitleElement.textContent = t("summaryProfileTitle");
   summaryProfileDescriptionElement.textContent = t("summaryProfileDescription");
+  summaryIncludeNotesInput.checked = includeNotesInSummary;
+  summaryIncludeNotesInput.disabled = true;
+  summaryIncludeNotesLabelElement.textContent = t("summaryIncludeNotes");
   summaryProfileCloseButton.textContent = t("close");
+  customProfileTitleElement.textContent = t("customProfileTitle");
+  customProfileNameLabelElement.textContent = t("customProfileName");
+  customProfileKeywordsLabelElement.textContent = t("customProfileKeywords");
+  customProfileKeywordsInput.placeholder = t("customProfileKeywordsPlaceholder");
+  customProfileAddButton.textContent = t("customProfileAdd");
   exportTitleElement.textContent = t("exportTitle");
   exportDescriptionElement.textContent = t("exportDescription");
   exportMarkdownButton.textContent = t("exportMarkdown");
@@ -1362,6 +1452,7 @@ function renderAuthDialog() {
   authSwitchButton.textContent = t(isSignUp ? "authSwitchToSignIn" : "authSwitchToSignUp");
   authSubmitButton.textContent = t(isSignUp ? "authSubmitSignUp" : "authSubmitSignIn");
   authPasswordInput.autocomplete = isSignUp ? "new-password" : "current-password";
+  authResendButton.hidden = isSignUp;
 }
 
 async function handleAuthButton() {
@@ -1440,6 +1531,31 @@ async function sendPasswordReset() {
     return;
   }
   showAuthError(t("authResetSent"));
+}
+
+async function resendEmailConfirmation() {
+  clearAuthError();
+  const email = authEmailInput.value.trim();
+  if (!email) {
+    showAuthError(t("authEmail"));
+    authEmailInput.focus();
+    return;
+  }
+
+  authResendButton.disabled = true;
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      emailRedirectTo: window.location.origin
+    }
+  });
+  authResendButton.disabled = false;
+  if (error) {
+    showAuthError(error.message || t("authFailed"));
+    return;
+  }
+  showAuthError(t("authConfirmationSent"));
 }
 
 function toggleAuthMode() {
@@ -1529,6 +1645,7 @@ function applyCloudLibrary({ workspaces, courses, sessions, segments, translatio
         summaryLanguage: session.summary_language ?? uiLanguage,
         summaryProfile: "student",
         summaries: normalizeSummaries(session.summaries, session.summary, session.summary_language),
+        bookmarks: parseBookmarksFromSummaries(session.summaries),
         segments: (segmentsBySession.get(session.id) ?? []).map((segment) => ({
           id: segment.id,
           text: segment.text,
@@ -1627,7 +1744,7 @@ async function syncLibraryToCloud({ announce = true } = {}) {
             notes: session.notes ?? "",
             summary: session.summary ?? "",
             summary_language: getActiveSummaryLanguage(session),
-            summaries: normalizeSummaries(session.summaries, session.summary, session.summaryLanguage),
+            summaries: serializeSummariesWithBookmarks(session),
             sort_order: sessionIndex,
             created_at: session.createdAt
           });
@@ -2082,6 +2199,7 @@ function renderSegments() {
   const activeTranslation = activeTranscriptTab === "original" ? "" : session?.translations?.[activeTranscriptTab] ?? "";
   renderTranscriptFoldState();
   transcriptElement.replaceChildren();
+  bookmarkCurrentButton.disabled = !session || !isListening || isStopping;
   copyAllButton.disabled = !getActiveTranscriptText().trim();
   clearButton.disabled = segments.length === 0;
   exportSessionButton.disabled = !hasExportableSession();
@@ -2443,14 +2561,105 @@ function toggleNotesFold() {
   renderNotesFoldState();
 }
 
+function addCurrentBookmark() {
+  const session = getActiveSession();
+  if (!session || !isListening) return;
+  const bookmarks = getSessionBookmarks(session);
+  const lastSegment = [...(session.segments ?? [])].reverse().find((segment) => segment.text?.trim());
+  const activeInterim = getActiveInterimText().trim();
+  const bookmark = {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    offsetMs: getRecordingOffsetMs(),
+    title: t("bookmarkDefault", { number: String(bookmarks.length + 1) }),
+    snippet: createBookmarkSnippet(activeInterim || lastSegment?.text || "")
+  };
+  bookmarks.push(bookmark);
+  setSessionBookmarks(session, bookmarks);
+  setStatus(t("bookmarkAdded"), "idle");
+  renderBookmarks();
+}
+
+function renderBookmarks() {
+  const session = getActiveSession();
+  const bookmarks = getSessionBookmarks(session);
+  bookmarksListElement.replaceChildren();
+  bookmarkCurrentButton.disabled = !session || !isListening || isStopping;
+
+  if (isBookmarksFolded) {
+    renderBookmarksFoldState(bookmarks);
+    return;
+  }
+
+  if (!bookmarks.length) {
+    const empty = document.createElement("p");
+    empty.className = "bookmarks-empty";
+    empty.textContent = t("bookmarksEmpty");
+    bookmarksListElement.append(empty);
+    renderBookmarksFoldState(bookmarks);
+    return;
+  }
+
+  for (const bookmark of bookmarks) {
+    const row = document.createElement("div");
+    row.className = "bookmark-row";
+    const text = document.createElement("div");
+    text.className = "bookmark-text";
+    text.innerHTML = `
+      <strong>${escapeHTML(formatBookmarkTime(bookmark))}</strong>
+      <span>${escapeHTML(bookmark.snippet || bookmark.title || "")}</span>
+    `;
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "bookmark-delete";
+    deleteButton.type = "button";
+    deleteButton.textContent = "×";
+    deleteButton.title = t("delete");
+    deleteButton.setAttribute("aria-label", t("delete"));
+    deleteButton.addEventListener("click", () => deleteBookmark(bookmark.id));
+    row.append(text, deleteButton);
+    bookmarksListElement.append(row);
+  }
+
+  renderBookmarksFoldState(bookmarks);
+}
+
+function renderBookmarksFoldState(bookmarks = getSessionBookmarks(getActiveSession())) {
+  const session = getActiveSession();
+  bookmarksFoldButton.disabled = !session;
+  bookmarksFoldButton.textContent = isBookmarksFolded ? "▾" : "▴";
+  bookmarksFoldButton.title = t(isBookmarksFolded ? "bookmarksUnfold" : "bookmarksFold");
+  bookmarksFoldButton.setAttribute("aria-label", bookmarksFoldButton.title);
+  bookmarksFoldButton.setAttribute("aria-expanded", isBookmarksFolded ? "false" : "true");
+  bookmarksFoldSummaryElement.hidden = !isBookmarksFolded;
+  bookmarksFoldSummaryElement.textContent = t("bookmarksFolded", { count: String(bookmarks.length) });
+  bookmarksListElement.hidden = isBookmarksFolded;
+  bookmarksPanelElement.dataset.folded = isBookmarksFolded ? "true" : "false";
+}
+
+function toggleBookmarksFold() {
+  isBookmarksFolded = !isBookmarksFolded;
+  renderBookmarks();
+}
+
+function deleteBookmark(bookmarkId) {
+  const session = getActiveSession();
+  if (!session) return;
+  setSessionBookmarks(session, getSessionBookmarks(session).filter((bookmark) => bookmark.id !== bookmarkId));
+  renderBookmarks();
+}
+
 function openSummaryProfileDialog() {
+  summaryIncludeNotesInput.checked = includeNotesInSummary;
   renderSummaryProfileOptions();
   summaryProfileDialog.showModal();
 }
 
 function renderSummaryProfileOptions() {
-  summaryProfileListElement.innerHTML = SUMMARY_PROFILES.map((profile) => {
+  summaryProfileListElement.innerHTML = getSummaryProfiles().map((profile) => {
     const checked = profile.code === summaryProfile ? " checked" : "";
+    const deleteButton = profile.custom
+      ? `<button class="profile-delete" type="button" data-profile-delete="${escapeHTML(profile.code)}" title="${escapeHTML(t("customProfileDelete"))}">×</button>`
+      : "";
     return `
       <label class="profile-option">
         <input type="radio" name="summary-profile" value="${profile.code}"${checked}>
@@ -2458,12 +2667,20 @@ function renderSummaryProfileOptions() {
           <strong>${getSummaryProfileLabel(profile.code)}</strong>
           <small>${getSummaryProfileDescription(profile.code)}</small>
         </span>
+        ${deleteButton}
       </label>
     `;
   }).join("");
 
   for (const input of summaryProfileListElement.querySelectorAll("input[name='summary-profile']")) {
     input.addEventListener("change", () => setSummaryProfile(input.value));
+  }
+  for (const button of summaryProfileListElement.querySelectorAll("[data-profile-delete]")) {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      deleteCustomSummaryProfile(button.dataset.profileDelete);
+    });
   }
 }
 
@@ -2475,6 +2692,40 @@ function setSummaryProfile(profileCode) {
   isSummaryEditing = false;
   renderInterfaceText();
   renderSummary();
+}
+
+function toggleSummaryNotesContext() {
+  includeNotesInSummary = summaryIncludeNotesInput.checked;
+  localStorage.setItem(SUMMARY_INCLUDE_NOTES_KEY, includeNotesInSummary ? "true" : "false");
+}
+
+function createCustomSummaryProfile() {
+  const name = customProfileNameInput.value.trim();
+  const sections = customProfileKeywordsInput.value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!name || !sections.length) return;
+
+  const profiles = loadCustomSummaryProfiles();
+  const profile = {
+    code: `custom-${crypto.randomUUID()}`,
+    name,
+    sections
+  };
+  profiles.push(profile);
+  saveCustomSummaryProfiles(profiles);
+  customProfileNameInput.value = "";
+  customProfileKeywordsInput.value = "";
+  setSummaryProfile(profile.code);
+  setStatus(t("customProfileSaved"), "idle");
+}
+
+function deleteCustomSummaryProfile(profileCode) {
+  const nextProfiles = loadCustomSummaryProfiles().filter((profile) => profile.code !== profileCode);
+  saveCustomSummaryProfiles(nextProfiles);
+  if (summaryProfile === profileCode) setSummaryProfile("student");
+  else renderSummaryProfileOptions();
 }
 
 function renderSummary() {
@@ -2570,6 +2821,10 @@ async function generateSummary(targetLanguage = uiLanguage) {
   if (!session || !subject || !text) return;
 
   const normalizedTargetLanguage = normalizeLanguageCode(targetLanguage) || uiLanguage;
+  if (getSummaryProfile(summaryProfile)?.custom) {
+    showError(t("customProfileServerPending"));
+    return;
+  }
   isSummaryEditing = false;
   session.summaryLanguage = normalizedTargetLanguage;
   session.summaryProfile = summaryProfile;
@@ -2838,8 +3093,18 @@ function formatTranscriptForExport() {
     lines.push(`[${time}] ${segment.text}`, "");
   }
 
+  const bookmarks = getSessionBookmarks(session);
+  if (bookmarks.length) {
+    lines.push("", `[${t("bookmarksTitle")}]`);
+    for (const bookmark of bookmarks) {
+      lines.push(`- ${formatBookmarkTime(bookmark)} ${bookmark.snippet || bookmark.title}`);
+    }
+    lines.push("");
+  }
+
   if (session.notes?.trim()) lines.push("", `[${t("notesTitle")}]`, session.notes.trim(), "");
   for (const [summaryKey, summary] of Object.entries(getSessionSummaries(session))) {
+    if (isReservedSummaryKey(summaryKey)) continue;
     if (summary?.trim()) lines.push("", `[${formatSummaryExportLabel(summaryKey)}]`, summary.trim(), "");
   }
 
@@ -2855,8 +3120,9 @@ function hasExportableSession() {
   const session = getActiveSession();
   return Boolean(session && (
     session.segments?.length ||
+    getSessionBookmarks(session).length ||
     session.notes?.trim() ||
-    Object.values(session.summaries ?? {}).some((summary) => summary?.trim()) ||
+    Object.entries(session.summaries ?? {}).some(([key, summary]) => !isReservedSummaryKey(key) && summary?.trim()) ||
     Object.values(session.translations ?? {}).some((translation) => translation?.trim())
   ));
 }
@@ -2903,6 +3169,16 @@ function buildFormattedExport() {
     });
   }
 
+  const bookmarks = getSessionBookmarks(session);
+  if (bookmarks.length) {
+    sections.push({
+      title: t("bookmarksTitle"),
+      html: `<ul>${bookmarks.map((bookmark) => `
+        <li><strong>${escapeHTML(formatBookmarkTime(bookmark))}</strong> ${escapeHTML(bookmark.snippet || bookmark.title)}</li>
+      `).join("")}</ul>`
+    });
+  }
+
   for (const language of TRANSLATION_LANGUAGES) {
     const translation = session.translations?.[language.code]?.trim();
     if (translation) {
@@ -2921,6 +3197,7 @@ function buildFormattedExport() {
   }
 
   for (const [summaryKey, summary] of Object.entries(getSessionSummaries(session))) {
+    if (isReservedSummaryKey(summaryKey)) continue;
     if (summary?.trim()) {
       sections.push({
         title: formatSummaryExportLabel(summaryKey),
@@ -3102,6 +3379,10 @@ function collectSearchFields(session) {
   const fields = [];
   if (session.title) fields.push({ source: t("defaultSessionPrefix"), text: session.title });
   if (session.notes?.trim()) fields.push({ source: t("notesTitle"), text: session.notes });
+  for (const bookmark of getSessionBookmarks(session)) {
+    const text = `${formatBookmarkTime(bookmark)} ${bookmark.title} ${bookmark.snippet}`.trim();
+    if (text) fields.push({ source: t("bookmarksTitle"), text });
+  }
   for (const segment of session.segments ?? []) {
     if (segment.text?.trim()) fields.push({ source: t("originalTab"), text: segment.text });
   }
@@ -3109,6 +3390,7 @@ function collectSearchFields(session) {
     if (translation?.trim()) fields.push({ source: getLanguageLabel(languageCode), text: translation });
   }
   for (const [summaryKey, summary] of Object.entries(getSessionSummaries(session))) {
+    if (isReservedSummaryKey(summaryKey)) continue;
     if (summary?.trim()) fields.push({ source: formatSummaryExportLabel(summaryKey), text: summary });
   }
   return fields;
@@ -3133,6 +3415,7 @@ async function clearTranscript() {
   session.translations = {};
   session.summary = "";
   session.summaries = {};
+  session.bookmarks = [];
   saveLibrary();
   renderAll();
 }
@@ -3191,15 +3474,54 @@ function clearSpeechCacheForSession(sessionId, language = "") {
 }
 
 function normalizeSummaryProfile(profileCode) {
-  return SUMMARY_PROFILES.some((profile) => profile.code === profileCode) ? profileCode : "student";
+  return getSummaryProfiles().some((profile) => profile.code === profileCode) ? profileCode : "student";
 }
 
 function getSummaryProfileLabel(profileCode = summaryProfile) {
+  const profile = getSummaryProfile(profileCode);
+  if (profile?.custom) return profile.name;
   return t(`summaryProfile${toTitleCase(normalizeSummaryProfile(profileCode))}`);
 }
 
 function getSummaryProfileDescription(profileCode = summaryProfile) {
+  const profile = getSummaryProfile(profileCode);
+  if (profile?.custom) return profile.sections.join(" · ");
   return t(`summaryProfile${toTitleCase(normalizeSummaryProfile(profileCode))}Description`);
+}
+
+function getSummaryProfile(profileCode = summaryProfile) {
+  const normalized = String(profileCode ?? "");
+  return getSummaryProfiles().find((profile) => profile.code === normalized) ?? SUMMARY_PROFILES[0];
+}
+
+function getSummaryProfiles() {
+  return [
+    ...SUMMARY_PROFILES,
+    ...loadCustomSummaryProfiles().map((profile) => ({
+      code: profile.code,
+      custom: true,
+      name: profile.name,
+      sections: profile.sections
+    }))
+  ];
+}
+
+function loadCustomSummaryProfiles() {
+  const profiles = loadJSON(CUSTOM_SUMMARY_PROFILES_KEY, []);
+  if (!Array.isArray(profiles)) return [];
+  return profiles
+    .map((profile) => ({
+      code: String(profile.code ?? ""),
+      name: String(profile.name ?? "").trim(),
+      sections: Array.isArray(profile.sections)
+        ? profile.sections.map((section) => String(section ?? "").trim()).filter(Boolean)
+        : []
+    }))
+    .filter((profile) => profile.code.startsWith("custom-") && profile.name && profile.sections.length);
+}
+
+function saveCustomSummaryProfiles(profiles) {
+  localStorage.setItem(CUSTOM_SUMMARY_PROFILES_KEY, JSON.stringify(profiles));
 }
 
 function getSummaryStorageKey(languageCode = getActiveSummaryLanguage()) {
@@ -3207,10 +3529,70 @@ function getSummaryStorageKey(languageCode = getActiveSummaryLanguage()) {
 }
 
 function formatSummaryExportLabel(summaryKey) {
+  if (isReservedSummaryKey(summaryKey)) return "";
   const [profileCode, languageCode] = summaryKey.includes(":")
     ? summaryKey.split(":")
     : ["student", summaryKey];
   return `${t("summaryTitle")} - ${getSummaryProfileLabel(profileCode)} - ${getLanguageLabel(languageCode)}`;
+}
+
+function isReservedSummaryKey(key) {
+  return String(key ?? "").startsWith("__");
+}
+
+function normalizeBookmarks(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((bookmark) => ({
+      id: String(bookmark.id ?? crypto.randomUUID()),
+      createdAt: bookmark.createdAt ?? new Date().toISOString(),
+      offsetMs: Number.isFinite(Number(bookmark.offsetMs)) ? Number(bookmark.offsetMs) : 0,
+      title: String(bookmark.title ?? ""),
+      snippet: String(bookmark.snippet ?? "")
+    }))
+    .filter((bookmark) => bookmark.id);
+}
+
+function parseBookmarksFromSummaries(summaries) {
+  const raw = summaries?.[BOOKMARKS_SUMMARY_KEY];
+  if (!raw) return [];
+  try {
+    return normalizeBookmarks(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+function getSessionBookmarks(session) {
+  if (!session) return [];
+  if (!Array.isArray(session.bookmarks)) {
+    session.bookmarks = parseBookmarksFromSummaries(session.summaries);
+  }
+  return session.bookmarks;
+}
+
+function setSessionBookmarks(session, bookmarks) {
+  if (!session) return;
+  session.bookmarks = normalizeBookmarks(bookmarks);
+  const summaries = getSessionSummaries(session);
+  if (session.bookmarks.length) summaries[BOOKMARKS_SUMMARY_KEY] = JSON.stringify(session.bookmarks);
+  else delete summaries[BOOKMARKS_SUMMARY_KEY];
+  saveLibrary();
+}
+
+function getRecordingOffsetMs() {
+  return recordingStartedAt ? Math.max(0, Date.now() - recordingStartedAt) : 0;
+}
+
+function createBookmarkSnippet(text) {
+  const compact = String(text ?? "").replace(/\s+/g, " ").trim();
+  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
+}
+
+function formatBookmarkTime(bookmark) {
+  const totalSeconds = Math.floor((Number(bookmark.offsetMs) || 0) / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function toTitleCase(value) {
@@ -3305,7 +3687,10 @@ function normalizeSummaries(value, legacySummary = "", legacyLanguage = "") {
   if (legacySummary && !summaries[language]) summaries[language] = legacySummary;
   return Object.fromEntries(
     Object.entries(summaries)
-      .map(([languageCode, text]) => [normalizeLanguageCode(languageCode), typeof text === "string" ? text : ""])
+      .map(([languageCode, text]) => [
+        isReservedSummaryKey(languageCode) ? languageCode : normalizeLanguageCode(languageCode),
+        typeof text === "string" ? text : ""
+      ])
       .filter(([languageCode, text]) => languageCode && text)
   );
 }
@@ -3320,6 +3705,14 @@ function getSessionSummaries(session) {
     ? normalizeSummaries(summaries)
     : normalizeSummaries(summaries, session.summary, session.summaryLanguage);
   return session.summaries;
+}
+
+function serializeSummariesWithBookmarks(session) {
+  const summaries = normalizeSummaries(session?.summaries, session?.summary, session?.summaryLanguage);
+  const bookmarks = getSessionBookmarks(session);
+  if (bookmarks.length) summaries[BOOKMARKS_SUMMARY_KEY] = JSON.stringify(bookmarks);
+  else delete summaries[BOOKMARKS_SUMMARY_KEY];
+  return summaries;
 }
 
 function getActiveSummaryLanguage(session = getActiveSession()) {
@@ -3488,6 +3881,7 @@ function normalizeSubjects(subjects) {
       summaryLanguage: normalizeLanguageCode(session.summaryLanguage) || uiLanguage,
       summaryProfile: normalizeSummaryProfile(session.summaryProfile ?? "student"),
       summaries: normalizeSummaries(session.summaries, session.summary, session.summaryLanguage),
+      bookmarks: normalizeBookmarks(session.bookmarks ?? parseBookmarksFromSummaries(session.summaries)),
       segments: Array.isArray(session.segments)
         ? session.segments.map((segment) => ({
             ...segment,
