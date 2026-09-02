@@ -24,7 +24,7 @@ const ttsModels = (process.env.GEMINI_TTS_MODELS ?? "gemini-2.5-flash-preview-tt
   .map((model) => model.trim())
   .filter(Boolean);
 const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 75_000);
-const serverVersion = "2026-09-02.localized-summary-headings";
+const serverVersion = "2026-09-02.original-speech-playback";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -436,9 +436,12 @@ async function generateSummary({ model, prompt }) {
 }
 
 async function synthesizeSpeech({ text, targetLanguage }) {
-  const languageName = targetLanguages.get(targetLanguage) ?? "English";
+  const languageName = getSpeechLanguageName(targetLanguage);
+  const languageInstruction = languageName
+    ? `Read the following ${languageName} text aloud clearly and naturally.`
+    : "Read the following text aloud in its original language. If it contains multiple languages, preserve each passage's language.";
   const prompt = [
-    `Read the following ${languageName} text aloud clearly and naturally.`,
+    languageInstruction,
     "Use a calm, neutral educational tone.",
     "",
     text
@@ -454,6 +457,12 @@ async function synthesizeSpeech({ text, targetLanguage }) {
   }
 
   throw new Error(`Speech generation failed after ${ttsModels.length} attempt(s). ${failures.join(" | ")}`);
+}
+
+function getSpeechLanguageName(languageCode) {
+  const normalized = typeof languageCode === "string" ? languageCode.toLowerCase().split("-")[0] : "";
+  if (!normalized || normalized === "auto" || normalized === "original" || normalized === "mixed") return "";
+  return targetLanguages.get(normalized) ?? "";
 }
 
 async function generateSpeech({ model, prompt }) {

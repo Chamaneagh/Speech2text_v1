@@ -711,6 +711,7 @@ let isApplyingCloudLibrary = false;
 let cloudLibraryLoadedUserId = "";
 let isCoursePanelCollapsed = false;
 let transcriptEditTimer;
+let activeInlineEdit;
 let wakeLock;
 let speechAudio;
 let speechPlaybackToken = 0;
@@ -2060,6 +2061,7 @@ function renderLibrary() {
   courseTreeElement.replaceChildren();
   const workspace = getActiveWorkspace();
 
+  restoreInlineEditTarget(activeWorkspaceTitleElement);
   activeWorkspaceTitleElement.textContent = workspace?.name ?? t("defaultWorkspace");
   if (!workspace) return;
 
@@ -2406,6 +2408,7 @@ function renameSession(subjectId, sessionId, title) {
 }
 
 function startInlineEdit(target, currentValue, onCommit) {
+  const originalTarget = target;
   const input = document.createElement("input");
   input.className = "inline-edit session-edit";
   if (target.classList.contains("workspace-title")) input.className = "inline-edit workspace-edit";
@@ -2420,7 +2423,10 @@ function startInlineEdit(target, currentValue, onCommit) {
     completed = true;
     const nextValue = input.value.trim();
     if (shouldCommit && nextValue && nextValue !== currentValue) onCommit(nextValue);
-    else renderLibrary();
+    else {
+      restoreInlineEditTarget(originalTarget, input);
+      renderLibrary();
+    }
   };
 
   input.addEventListener("keydown", (event) => {
@@ -2430,8 +2436,16 @@ function startInlineEdit(target, currentValue, onCommit) {
   input.addEventListener("blur", () => finish(true));
 
   target.replaceWith(input);
+  activeInlineEdit = { target: originalTarget, input };
   input.focus();
   input.select();
+}
+
+function restoreInlineEditTarget(target, input = undefined) {
+  if (!target || target.isConnected) return;
+  const activeInput = input ?? (activeInlineEdit?.target === target ? activeInlineEdit.input : undefined);
+  if (activeInput?.isConnected) activeInput.replaceWith(target);
+  if (activeInlineEdit?.target === target) activeInlineEdit = undefined;
 }
 
 function renderSegments() {
@@ -2534,7 +2548,8 @@ function renderSpeechButton() {
   const session = getActiveSession();
   const text = getActiveTranscriptText().trim();
   const speechKey = getSpeechCacheKey();
-  const canSpeak = Boolean(session && activeTranscriptTab !== "original" && text && session.translations?.[activeTranscriptTab]);
+  const isOriginal = activeTranscriptTab === "original";
+  const canSpeak = Boolean(session && text && (isOriginal || session.translations?.[activeTranscriptTab]));
   const isGenerating = Boolean(speakingKey && speakingKey === speechKey);
   const isPlaying = Boolean(speechAudio && !speechAudio.paused && speechAudio.dataset.speechKey === speechKey);
   speakTranscriptButton.disabled = !canSpeak || isListening || isStopping || translatingTo || (Boolean(speakingKey) && !isGenerating);
@@ -2591,9 +2606,11 @@ async function selectTranscriptTab(tab) {
 
 async function toggleSpeechPlayback() {
   const session = getActiveSession();
-  const targetLanguage = normalizeLanguageCode(activeTranscriptTab);
+  const activeLanguage = normalizeLanguageCode(activeTranscriptTab);
+  const isOriginal = activeLanguage === "original";
+  const targetLanguage = isOriginal ? getSpeechLanguageForOriginalTranscript() : activeLanguage;
   const text = getActiveTranscriptText().trim();
-  if (!session || targetLanguage === "original" || !text || !session.translations?.[targetLanguage]) {
+  if (!session || !text || (!isOriginal && !session.translations?.[activeLanguage])) {
     showError(t("speechUnavailable"));
     return;
   }
@@ -2749,6 +2766,11 @@ function getSpeechCacheKey() {
   const language = normalizeLanguageCode(activeTranscriptTab);
   const text = getActiveTranscriptText();
   return session && language ? `${session.id}:${language}:${hashText(text)}` : "";
+}
+
+function getSpeechLanguageForOriginalTranscript() {
+  const sourceLanguage = getSourceLanguageForTranslation();
+  return sourceLanguage || "auto";
 }
 
 function appendTranscriptSegment(segment) {
