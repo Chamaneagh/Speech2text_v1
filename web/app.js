@@ -156,7 +156,7 @@ const UI_STRINGS = {
     summaryProfileMeetingDescription: "Meeting notes with topics discussed, decisions, owners, open questions and follow-ups.",
     summaryProfileResearch: "Research",
     summaryProfileResearchDescription: "Analytical brief with thesis, evidence, methods, limitations and points to verify.",
-    summaryIncludeNotes: "Use personal notes when generating summaries (needs permission)",
+    summaryIncludeNotes: "Use personal notes when generating summaries",
     customProfileTitle: "Custom profile",
     customProfileName: "Profile name",
     customProfileKeywords: "Sections or keywords",
@@ -164,7 +164,6 @@ const UI_STRINGS = {
     customProfileAdd: "Add profile",
     customProfileDelete: "Delete profile",
     customProfileSaved: "Summary profile saved.",
-    customProfileServerPending: "Custom AI profiles need permission to send their structure to the server.",
     copySummary: "Copy",
     summaryCopied: "Summary copied.",
     summaryGenerating: "Generating study sheet…",
@@ -374,7 +373,7 @@ const UI_STRINGS = {
     summaryProfileMeetingDescription: "Compte rendu avec sujets abordés, décisions, responsables, questions ouvertes et suivis.",
     summaryProfileResearch: "Recherche",
     summaryProfileResearchDescription: "Synthèse analytique avec thèse, preuves, méthodes, limites et points à vérifier.",
-    summaryIncludeNotes: "Utiliser les notes personnelles pour générer les fiches (autorisation requise)",
+    summaryIncludeNotes: "Utiliser les notes personnelles pour générer les fiches",
     customProfileTitle: "Profil personnalisé",
     customProfileName: "Nom du profil",
     customProfileKeywords: "Sections ou mots-clés",
@@ -382,7 +381,6 @@ const UI_STRINGS = {
     customProfileAdd: "Ajouter le profil",
     customProfileDelete: "Supprimer le profil",
     customProfileSaved: "Profil de fiche enregistré.",
-    customProfileServerPending: "Les profils IA personnalisés nécessitent l'autorisation d'envoyer leur structure au serveur.",
     copySummary: "Copier",
     summaryCopied: "Fiche résumé copiée.",
     summaryGenerating: "Génération de la fiche…",
@@ -653,7 +651,7 @@ let speechAudio;
 const speechCache = new Map();
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
-let includeNotesInSummary = localStorage.getItem(SUMMARY_INCLUDE_NOTES_KEY) === "true";
+let includeNotesInSummary = localStorage.getItem(SUMMARY_INCLUDE_NOTES_KEY) !== "false";
 let summaryProfile = normalizeSummaryProfile(localStorage.getItem(SUMMARY_PROFILE_KEY));
 let library = loadLibrary();
 
@@ -1311,7 +1309,7 @@ function renderInterfaceText() {
   summaryProfileTitleElement.textContent = t("summaryProfileTitle");
   summaryProfileDescriptionElement.textContent = t("summaryProfileDescription");
   summaryIncludeNotesInput.checked = includeNotesInSummary;
-  summaryIncludeNotesInput.disabled = true;
+  summaryIncludeNotesInput.disabled = false;
   summaryIncludeNotesLabelElement.textContent = t("summaryIncludeNotes");
   summaryProfileCloseButton.textContent = t("close");
   customProfileTitleElement.textContent = t("customProfileTitle");
@@ -2821,10 +2819,7 @@ async function generateSummary(targetLanguage = uiLanguage) {
   if (!session || !subject || !text) return;
 
   const normalizedTargetLanguage = normalizeLanguageCode(targetLanguage) || uiLanguage;
-  if (getSummaryProfile(summaryProfile)?.custom) {
-    showError(t("customProfileServerPending"));
-    return;
-  }
+  const activeProfile = getSummaryProfile(summaryProfile);
   isSummaryEditing = false;
   session.summaryLanguage = normalizedTargetLanguage;
   session.summaryProfile = summaryProfile;
@@ -2845,6 +2840,10 @@ async function generateSummary(targetLanguage = uiLanguage) {
         text,
         targetLanguage: normalizedTargetLanguage,
         summaryProfile,
+        summaryProfileTitle: activeProfile?.custom ? activeProfile.name : "",
+        summaryProfileSections: activeProfile?.custom ? activeProfile.sections : [],
+        includeNotes: includeNotesInSummary,
+        notes: session.notes ?? "",
         courseTitle: subject.name,
         sessionTitle: session.title
       })

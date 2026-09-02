@@ -64,6 +64,30 @@ The response is:
 
 Supported MVP target languages are `en`, `fr`, `ja`, and `de`. This route uses `GEMINI_TRANSLATE_MODELS` when set as a comma-separated fallback list, otherwise `gemini-3.5-flash-lite,gemini-3.5-flash`.
 
+The PWA also calls:
+
+```text
+POST /api/summarize
+```
+
+With JSON:
+
+```json
+{
+  "text": "the finalized transcript",
+  "targetLanguage": "fr",
+  "summaryProfile": "student",
+  "summaryProfileTitle": "Custom profile name when applicable",
+  "summaryProfileSections": ["Section or keyword"],
+  "includeNotes": true,
+  "notes": "personal notes for this lecture",
+  "courseTitle": "Course name",
+  "sessionTitle": "Lecture name"
+}
+```
+
+Built-in `summaryProfile` values are `student`, `business`, `meeting`, and `research`. Unknown profile codes can use the custom title and sections fields.
+
 In a second PowerShell window, serve the PWA:
 
 ```text

@@ -23,7 +23,7 @@ const ttsModels = (process.env.GEMINI_TTS_MODELS ?? "gemini-2.5-flash-preview-tt
   .map((model) => model.trim())
   .filter(Boolean);
 const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 45_000);
-const serverVersion = "2026-09-02.translation-tts";
+const serverVersion = "2026-09-02.summary-notes-profiles";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -205,13 +205,27 @@ async function generateTranslation({ model, prompt }) {
   }
 }
 
-async function summarizeText({ text, targetLanguage, summaryProfile, courseTitle, sessionTitle }) {
+async function summarizeText({
+  text,
+  targetLanguage,
+  summaryProfile,
+  summaryProfileTitle,
+  summaryProfileSections,
+  includeNotes,
+  notes,
+  courseTitle,
+  sessionTitle
+}) {
   const targetLanguageName = targetLanguages.get(targetLanguage) ?? "English";
-  const profile = summaryProfiles.get(summaryProfile) ?? summaryProfiles.get("student");
+  const profile = getSummaryProfileConfig({ summaryProfile, summaryProfileTitle, summaryProfileSections });
+  const notesText = includeNotes && notes ? notes.trim() : "";
   const prompt = [
     `Create a structured ${profile.title.toLowerCase()} in ${targetLanguageName} from this transcript.`,
     "Return only Markdown. Do not invent facts that are not supported by the transcript.",
     profile.instruction,
+    notesText
+      ? "Use the personal notes as additional context and clarification. If notes conflict with the transcript, mention the uncertainty rather than silently overwriting the transcript."
+      : "",
     "Include these sections:",
     `# ${profile.title}`,
     ...profile.sections.map((section) => `## ${section}`),
@@ -219,8 +233,10 @@ async function summarizeText({ text, targetLanguage, summaryProfile, courseTitle
     `Course: ${courseTitle || "Unknown course"}`,
     `Lecture: ${sessionTitle || "Unknown lecture"}`,
     "",
+    notesText ? `Personal notes:\n${notesText}\n` : "",
+    "Transcript:",
     text
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   const failures = [];
   for (const model of summaryModels) {
@@ -232,6 +248,28 @@ async function summarizeText({ text, targetLanguage, summaryProfile, courseTitle
   }
 
   throw new Error(`Summary failed after ${summaryModels.length} attempt(s). ${failures.join(" | ")}`);
+}
+
+function getSummaryProfileConfig({ summaryProfile, summaryProfileTitle, summaryProfileSections }) {
+  const builtIn = summaryProfiles.get(summaryProfile);
+  if (builtIn) return builtIn;
+
+  const title = cleanText(summaryProfileTitle, 80) || "Custom Summary";
+  const sections = Array.isArray(summaryProfileSections)
+    ? summaryProfileSections.map((section) => cleanText(section, 80)).filter(Boolean).slice(0, 12)
+    : [];
+
+  if (!sections.length) return summaryProfiles.get("student");
+
+  return {
+    title,
+    instruction: "Follow the custom structure closely. Treat each custom section as a heading or keyword to cover when supported by the transcript.",
+    sections
+  };
+}
+
+function cleanText(value, maxLength) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 async function generateSummary({ model, prompt }) {
@@ -426,6 +464,10 @@ const server = http.createServer(async (request, response) => {
       const text = typeof body.text === "string" ? body.text.trim() : "";
       const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage : "en";
       const summaryProfile = typeof body.summaryProfile === "string" ? body.summaryProfile : "student";
+      const summaryProfileTitle = typeof body.summaryProfileTitle === "string" ? body.summaryProfileTitle.trim() : "";
+      const summaryProfileSections = Array.isArray(body.summaryProfileSections) ? body.summaryProfileSections : [];
+      const includeNotes = Boolean(body.includeNotes);
+      const notes = typeof body.notes === "string" ? body.notes.trim() : "";
       const courseTitle = typeof body.courseTitle === "string" ? body.courseTitle.trim() : "";
       const sessionTitle = typeof body.sessionTitle === "string" ? body.sessionTitle.trim() : "";
 
@@ -434,7 +476,17 @@ const server = http.createServer(async (request, response) => {
         return;
       }
 
-      const summary = await summarizeText({ text, targetLanguage, summaryProfile, courseTitle, sessionTitle });
+      const summary = await summarizeText({
+        text,
+        targetLanguage,
+        summaryProfile,
+        summaryProfileTitle,
+        summaryProfileSections,
+        includeNotes,
+        notes,
+        courseTitle,
+        sessionTitle
+      });
       if (!summary) {
         sendJSON(response, 502, { error: "Gemini returned an empty summary" });
         return;

@@ -87,14 +87,12 @@ The first working version should:
 
 The following are deliberately postponed:
 
-- live French translation of every sentence;
-- cloud account synchronization;
+- live speech-to-speech interpretation;
 - raw audio retention;
 - speaker identification;
 - background or locked-screen recording;
 - App Store distribution;
 - true `.docx` generation;
-- direct AI use of personal notes/custom profile text until the user explicitly approves sending that content to the broker/Gemini.
 
 ## Repository layout
 
@@ -210,9 +208,9 @@ The token broker must not be deployed as an unrestricted public endpoint. Before
 - The stop flow now waits only briefly when no interim caption is pending, and waits longer only when a final transcript may still arrive. Diagnostics log concise lifecycle events instead of full Gemini JSON.
 - The finalized transcript can be translated on demand through `POST /api/translate`; the browser never receives the permanent Gemini API key. Translation controls are global, not repeated after each segment.
 - Translation defaults to fast text models (`gemini-3.5-flash-lite`, then `gemini-3.5-flash`) with per-model timeouts. Override with `GEMINI_TRANSLATE_MODELS` if needed.
+- A future live interpretation mode can use Gemini Live Translation with `gemini-3.5-live-translate-preview`. It should be implemented as a separate audio-to-audio mode because Google documents it as a continuous interpreter pipeline, with audio-only input and translated audio output.
 - Summaries are generated on demand through `POST /api/summarize`, stored per summary profile and language, and rendered from Markdown for reading. Built-in profiles include student, business, meeting, and research.
-- The frontend can create local custom summary profiles, but AI generation for custom profiles is intentionally blocked until the user explicitly approves sending the custom structure to the broker/Gemini.
-- The UI has a disabled "include personal notes" summary setting prepared for the next privacy-reviewed step. It should only be enabled when the user explicitly approves sending personal notes to the broker/Gemini as summary context.
+- The frontend can create local custom summary profiles. The user explicitly approved sending personal notes and custom summary profile structures to the Render broker/Gemini, so generated summaries can now use both.
 - Each lecture can store timestamped bookmarks. To avoid a Supabase migration, bookmarks are serialized inside the existing `lecture_sessions.summaries` JSON field under the reserved `__bookmarks` key; export and search ignore that key as a summary.
 - The account dialog supports password reset and an explicit resend-confirmation action. Supabase email confirmation still needs dashboard/SMTP verification because the MCP OAuth connection was unavailable during the last implementation pass.
 - The current Word export uses an editable `.doc` HTML document for compatibility, not a native `.docx` package.

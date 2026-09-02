@@ -614,10 +614,21 @@ h1 { margin: 0; font-size: 1.8rem; overflow-wrap: anywhere; }
 }
 
 .transcript-toolbar {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 6px;
   padding: 12px 12px 0;
+}
+.transcript-toolbar::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: 68px;
+  width: 24px;
+  height: 30px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0), rgba(15, 23, 42, .95));
 }
 .transcript-tabs {
   display: flex;
@@ -625,6 +636,7 @@ h1 { margin: 0; font-size: 1.8rem; overflow-wrap: anywhere; }
   min-width: 0;
   gap: 6px;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
 .transcript-tab {
   flex: 0 0 auto;
@@ -1294,8 +1306,14 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   }
 
   .app-header {
+    position: relative;
     flex-direction: column;
     gap: 12px;
+    padding-inline: 10px;
+  }
+
+  .app-header > div:first-child {
+    padding-right: 44px;
   }
 
   .header-side {
@@ -1304,6 +1322,9 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   }
 
   .account-bar {
+    position: absolute;
+    top: 0;
+    right: 10px;
     max-width: none;
     justify-content: flex-start;
   }
@@ -1325,6 +1346,13 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
   .action-button {
     min-width: 0;
+  }
+
+  .modal-input,
+  .notes-input,
+  .summary-input,
+  .transcript-edit {
+    font-size: 16px;
   }
 
   .course-tree {
@@ -1435,6 +1463,10 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     border-radius: 12px;
     background: rgba(11, 18, 32, .94);
     backdrop-filter: blur(10px);
+  }
+
+  body[data-recording="true"] .app-header > div:first-child {
+    padding-right: 0;
   }
 
   body[data-recording="true"] .app-header h1 {
