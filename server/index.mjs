@@ -24,7 +24,7 @@ const ttsModels = (process.env.GEMINI_TTS_MODELS ?? "gemini-2.5-flash-preview-tt
   .map((model) => model.trim())
   .filter(Boolean);
 const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 75_000);
-const serverVersion = "2026-09-02.original-speech-playback";
+const serverVersion = "2026-09-02.tts-rate-limit-retry";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -448,15 +448,23 @@ async function synthesizeSpeech({ text, targetLanguage }) {
   ].join("\n");
 
   const failures = [];
+  let quotaRetryAfterMs = 0;
   for (const model of ttsModels) {
     try {
       return await generateSpeech({ model, prompt });
     } catch (error) {
       failures.push(`${model}: ${error.message}`);
+      if (error.statusCode === 429) quotaRetryAfterMs = Math.max(quotaRetryAfterMs, error.retryAfterMs ?? 0);
     }
   }
 
-  throw new Error(`Speech generation failed after ${ttsModels.length} attempt(s). ${failures.join(" | ")}`);
+  const error = new Error(`Speech generation failed after ${ttsModels.length} attempt(s). ${failures.join(" | ")}`);
+  if (quotaRetryAfterMs) {
+    error.statusCode = 429;
+    error.retryAfterMs = quotaRetryAfterMs;
+    error.publicMessage = "Audio generation limit reached. Please wait before trying again.";
+  }
+  throw error;
 }
 
 function getSpeechLanguageName(languageCode) {
@@ -493,7 +501,13 @@ async function generateSpeech({ model, prompt }) {
     });
 
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error?.message || `HTTP ${response.status}`);
+    if (!response.ok) {
+      const message = result.error?.message || `HTTP ${response.status}`;
+      const error = new Error(message);
+      error.statusCode = response.status;
+      error.retryAfterMs = getRetryAfterMs(response, message);
+      throw error;
+    }
 
     const inlineData = result.candidates?.[0]?.content?.parts?.find((part) => part.inlineData)?.inlineData;
     const data = inlineData?.data;
@@ -507,6 +521,15 @@ async function generateSpeech({ model, prompt }) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function getRetryAfterMs(response, message = "") {
+  const retryAfterHeader = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfterHeader) && retryAfterHeader > 0) return Math.ceil(retryAfterHeader * 1000);
+  const match = String(message).match(/retry\s+in\s+([0-9.]+)s/i);
+  if (!match) return 0;
+  const seconds = Number(match[1]);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds * 1000) : 0;
 }
 
 function parseSampleRate(mimeType = "") {
@@ -852,7 +875,10 @@ const server = http.createServer(async (request, response) => {
       response.end(audio);
     } catch (error) {
       if (error.statusCode !== 401) console.error("Unable to generate speech", error);
-      sendJSON(response, error.statusCode ?? 502, { error: error.message || "Unable to generate speech" });
+      sendJSON(response, error.statusCode ?? 502, {
+        error: error.publicMessage || error.message || "Unable to generate speech",
+        retryAfterMs: error.retryAfterMs
+      });
     }
     return;
   }

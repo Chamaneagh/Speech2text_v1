@@ -24,8 +24,10 @@ const FINAL_TRANSCRIPT_WAIT_MS = 3_500;
 const QUIET_FINAL_WAIT_MS = 700;
 const TRANSLATION_TIMEOUT_MS = 30_000;
 const SUMMARY_TIMEOUT_MS = 60_000;
-const SPEECH_TIMEOUT_MS = 60_000;
+const SPEECH_TIMEOUT_MS = 90_000;
 const SPEECH_CHUNK_MAX_CHARS = 700;
+const SPEECH_CHUNK_PAUSE_MS = 7_000;
+const SPEECH_RETRY_PADDING_MS = 2_000;
 const COPY_CONFIRMATION_MS = 1_200;
 const CLOUD_SYNC_DELAY_MS = 900;
 const LIVE_SAVE_DELAY_MS = 1_500;
@@ -112,14 +114,15 @@ const UI_STRINGS = {
     foldTranscript: "Collapse transcript",
     unfoldTranscript: "Show transcript",
     foldedTranscript: "{label} · {count} characters",
-    playSpeech: "Read translation aloud",
+    playSpeech: "Read text aloud",
     stopSpeech: "Stop audio",
     speechGenerating: "Preparing audio…",
     speechGeneratingPart: "Preparing audio {current}/{total}…",
+    speechRateLimited: "Audio limit reached. Waiting {seconds}s before continuing…",
     speechReady: "Audio ready",
     speechTapAgain: "Audio ready. Tap play again.",
     speechFailed: "Audio generation failed.",
-    speechUnavailable: "Generate a translation before listening to it.",
+    speechUnavailable: "No text available to read aloud.",
     foldNotes: "Collapse notes",
     unfoldNotes: "Show notes",
     foldedNotes: "Notes · {count} characters",
@@ -353,14 +356,15 @@ const UI_STRINGS = {
     foldTranscript: "Replier la transcription",
     unfoldTranscript: "Afficher la transcription",
     foldedTranscript: "{label} · {count} caractères",
-    playSpeech: "Lire la traduction à voix haute",
+    playSpeech: "Lire le texte à voix haute",
     stopSpeech: "Arrêter l'audio",
     speechGenerating: "Préparation de l'audio…",
     speechGeneratingPart: "Préparation audio {current}/{total}…",
+    speechRateLimited: "Limite audio atteinte. Attente de {seconds}s avant de continuer…",
     speechReady: "Audio prêt",
     speechTapAgain: "Audio prêt. Appuie à nouveau sur lecture.",
     speechFailed: "La génération audio a échoué.",
-    speechUnavailable: "Génère une traduction avant de l'écouter.",
+    speechUnavailable: "Aucun texte disponible à lire à voix haute.",
     foldNotes: "Replier les notes",
     unfoldNotes: "Afficher les notes",
     foldedNotes: "Notes · {count} caractères",
@@ -2675,7 +2679,8 @@ async function createSpeechAudioURLs({ text, targetLanguage, speechKey }) {
         current: String(index + 1),
         total: String(chunks.length)
       }));
-      urls.push(await createSpeechAudioURL({ text: chunk, targetLanguage }));
+      urls.push(await createSpeechAudioURLWithRetry({ text: chunk, targetLanguage }));
+      if (index < chunks.length - 1) await wait(SPEECH_CHUNK_PAUSE_MS);
     }
 
     setStatus(t("speechReady"), "idle");
@@ -2694,6 +2699,20 @@ async function createSpeechAudioURLs({ text, targetLanguage, speechKey }) {
   }
 }
 
+async function createSpeechAudioURLWithRetry({ text, targetLanguage }) {
+  try {
+    return await createSpeechAudioURL({ text, targetLanguage });
+  } catch (error) {
+    if (!error.retryAfterMs) throw error;
+    const waitMs = error.retryAfterMs + SPEECH_RETRY_PADDING_MS;
+    const seconds = Math.ceil(waitMs / 1000);
+    setStatus(t("speechRateLimited", { seconds: String(seconds) }), "connecting");
+    addDiagnostic(t("speechRateLimited", { seconds: String(seconds) }));
+    await wait(waitMs);
+    return createSpeechAudioURL({ text, targetLanguage });
+  }
+}
+
 async function createSpeechAudioURL({ text, targetLanguage }) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), SPEECH_TIMEOUT_MS);
@@ -2708,7 +2727,9 @@ async function createSpeechAudioURL({ text, targetLanguage }) {
 
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      throw new Error(result.error || t("speechFailed"));
+      const error = new Error(result.error || t("speechFailed"));
+      if (response.status === 429 && Number.isFinite(result.retryAfterMs)) error.retryAfterMs = result.retryAfterMs;
+      throw error;
     }
 
     const audioBlob = await response.blob();
@@ -2750,6 +2771,10 @@ function splitTextForSpeech(text) {
 
   if (current) chunks.push(current);
   return chunks.length ? chunks : [text];
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function stopSpeechPlayback() {
