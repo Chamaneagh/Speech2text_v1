@@ -25,8 +25,10 @@ const QUIET_FINAL_WAIT_MS = 700;
 const TRANSLATION_TIMEOUT_MS = 30_000;
 const SUMMARY_TIMEOUT_MS = 60_000;
 const SPEECH_TIMEOUT_MS = 90_000;
-const SPEECH_CHUNK_MAX_CHARS = 700;
-const SPEECH_CHUNK_PAUSE_MS = 7_000;
+const SPEECH_CHUNK_MAX_CHARS = 850;
+const SPEECH_CHUNK_PAUSE_MS = 10_000;
+const SPEECH_MAX_ATTEMPTS = 4;
+const SPEECH_DEFAULT_RETRY_MS = 60_000;
 const SPEECH_RETRY_PADDING_MS = 2_000;
 const COPY_CONFIRMATION_MS = 1_200;
 const CLOUD_SYNC_DELAY_MS = 900;
@@ -119,6 +121,7 @@ const UI_STRINGS = {
     speechGenerating: "Preparing audio…",
     speechGeneratingPart: "Preparing audio {current}/{total}…",
     speechRateLimited: "Audio limit reached. Waiting {seconds}s before continuing…",
+    speechQuotaReached: "Audio generation is temporarily limited. Please wait a little before trying again.",
     speechReady: "Audio ready",
     speechTapAgain: "Audio ready. Tap play again.",
     speechFailed: "Audio generation failed.",
@@ -361,6 +364,7 @@ const UI_STRINGS = {
     speechGenerating: "Préparation de l'audio…",
     speechGeneratingPart: "Préparation audio {current}/{total}…",
     speechRateLimited: "Limite audio atteinte. Attente de {seconds}s avant de continuer…",
+    speechQuotaReached: "La génération audio est temporairement limitée. Attends un peu avant de réessayer.",
     speechReady: "Audio prêt",
     speechTapAgain: "Audio prêt. Appuie à nouveau sur lecture.",
     speechFailed: "La génération audio a échoué.",
@@ -2690,7 +2694,7 @@ async function createSpeechAudioURLs({ text, targetLanguage, speechKey }) {
       ? t("speechFailed")
       : error.message || t("speechFailed");
     showError(message);
-    setStatus(t("error"), "error");
+    setStatus(error.retryAfterMs ? t("speechQuotaReached") : t("error"), error.retryAfterMs ? "idle" : "error");
     for (const url of urls) URL.revokeObjectURL(url);
     return [];
   } finally {
@@ -2700,17 +2704,22 @@ async function createSpeechAudioURLs({ text, targetLanguage, speechKey }) {
 }
 
 async function createSpeechAudioURLWithRetry({ text, targetLanguage }) {
-  try {
-    return await createSpeechAudioURL({ text, targetLanguage });
-  } catch (error) {
-    if (!error.retryAfterMs) throw error;
-    const waitMs = error.retryAfterMs + SPEECH_RETRY_PADDING_MS;
-    const seconds = Math.ceil(waitMs / 1000);
-    setStatus(t("speechRateLimited", { seconds: String(seconds) }), "connecting");
-    addDiagnostic(t("speechRateLimited", { seconds: String(seconds) }));
-    await wait(waitMs);
-    return createSpeechAudioURL({ text, targetLanguage });
+  let lastError;
+  for (let attempt = 1; attempt <= SPEECH_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await createSpeechAudioURL({ text, targetLanguage });
+    } catch (error) {
+      lastError = error;
+      if (!error.retryAfterMs || attempt === SPEECH_MAX_ATTEMPTS) break;
+      const waitMs = Math.max(error.retryAfterMs, SPEECH_DEFAULT_RETRY_MS) + SPEECH_RETRY_PADDING_MS;
+      const seconds = Math.ceil(waitMs / 1000);
+      setStatus(t("speechRateLimited", { seconds: String(seconds) }), "connecting");
+      addDiagnostic(t("speechRateLimited", { seconds: String(seconds) }));
+      await wait(waitMs);
+    }
   }
+
+  throw lastError;
 }
 
 async function createSpeechAudioURL({ text, targetLanguage }) {
@@ -2727,8 +2736,8 @@ async function createSpeechAudioURL({ text, targetLanguage }) {
 
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      const error = new Error(result.error || t("speechFailed"));
-      if (response.status === 429 && Number.isFinite(result.retryAfterMs)) error.retryAfterMs = result.retryAfterMs;
+      const error = new Error(response.status === 429 ? t("speechQuotaReached") : result.error || t("speechFailed"));
+      if (response.status === 429) error.retryAfterMs = Number.isFinite(result.retryAfterMs) ? result.retryAfterMs : SPEECH_DEFAULT_RETRY_MS;
       throw error;
     }
 
