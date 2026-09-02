@@ -171,10 +171,12 @@ const UI_STRINGS = {
     summaryGenerating: "Generating study sheet…",
     summaryGeneratingLanguage: "Generating {language} study sheet…",
     summaryRequested: "Study sheet requested.",
+    summaryRequestDetails: "Study sheet request: {profile} -> {language}; sections: {sections}.",
     summaryReady: "Study sheet ready",
     summaryReceived: "Study sheet received: {count} characters.",
     summarySlow: "The study sheet is taking too long. Try again with a shorter transcript.",
     summaryFailed: "Study sheet generation failed.",
+    summaryNoTranscript: "Add or record a transcript before generating a study sheet.",
     summaryEmpty: "No summary to copy yet.",
     editTranscriptSegment: "Edit transcript",
     emptyTranscriptSegment: "The transcript cannot be empty.",
@@ -389,10 +391,12 @@ const UI_STRINGS = {
     summaryGenerating: "Génération de la fiche…",
     summaryGeneratingLanguage: "Génération de la fiche en {language}…",
     summaryRequested: "Fiche résumé demandée.",
+    summaryRequestDetails: "Demande de fiche: {profile} -> {language}; sections: {sections}.",
     summaryReady: "Fiche résumé prête",
     summaryReceived: "Fiche reçue: {count} caractères.",
     summarySlow: "La génération de fiche prend trop de temps. Essaie avec une transcription plus courte.",
     summaryFailed: "La génération de fiche a échoué.",
+    summaryNoTranscript: "Ajoute ou enregistre une transcription avant de générer une fiche.",
     summaryEmpty: "Aucune fiche résumé à copier pour le moment.",
     editTranscriptSegment: "Modifier la transcription",
     emptyTranscriptSegment: "La transcription ne peut pas être vide.",
@@ -2756,7 +2760,7 @@ function deleteCustomSummaryProfile(profileCode) {
 
 function renderSummary() {
   const session = getActiveSession();
-  const hasTranscript = getSegments().length > 0;
+  const hasTranscript = Boolean(getTranscriptText().trim());
   const summaryLanguage = getActiveSummaryLanguage(session);
   const summary = getSummaryText(session, summaryLanguage);
   const isGeneratingCurrentSummary = summarizingTo === summaryLanguage && !summary.trim();
@@ -2844,16 +2848,29 @@ async function generateSummary(targetLanguage = uiLanguage) {
   const session = getActiveSession();
   const subject = getActiveSubject();
   const text = getTranscriptText().trim();
-  if (!session || !subject || !text) return;
+  if (!session || !subject) return;
+  if (!text) {
+    showError(t("summaryNoTranscript"));
+    return;
+  }
 
   const normalizedTargetLanguage = normalizeLanguageCode(targetLanguage) || uiLanguage;
   const activeProfile = getSummaryProfile(summaryProfile);
+  const customProfileSections = activeProfile?.custom
+    ? (activeProfile.sections?.length ? activeProfile.sections : [activeProfile.name].filter(Boolean))
+    : [];
+  const profileLabel = getSummaryProfileLabel(summaryProfile);
   isSummaryEditing = false;
   session.summaryLanguage = normalizedTargetLanguage;
   session.summaryProfile = summaryProfile;
   summarizingTo = normalizedTargetLanguage;
   setStatus(t("summaryGenerating"), "connecting");
   addDiagnostic(t("summaryRequested"));
+  addDiagnostic(t("summaryRequestDetails", {
+    profile: profileLabel,
+    language: getLanguageLabel(normalizedTargetLanguage),
+    sections: customProfileSections.length ? customProfileSections.join(", ") : "built-in"
+  }));
   renderSummary();
 
   const controller = new AbortController();
@@ -2869,7 +2886,7 @@ async function generateSummary(targetLanguage = uiLanguage) {
         targetLanguage: normalizedTargetLanguage,
         summaryProfile,
         summaryProfileTitle: activeProfile?.custom ? activeProfile.name : "",
-        summaryProfileSections: activeProfile?.custom ? activeProfile.sections : [],
+        summaryProfileSections: customProfileSections,
         includeNotes: includeNotesInSummary,
         notes: session.notes ?? "",
         courseTitle: subject.name,
@@ -2878,6 +2895,7 @@ async function generateSummary(targetLanguage = uiLanguage) {
     });
 
     const result = await response.json().catch(() => ({}));
+    addDiagnostic(`Summary HTTP ${response.status}`);
     if (!response.ok || !result.summary) {
       throw new Error(result.error || t("summaryFailed"));
     }
@@ -2914,7 +2932,8 @@ async function selectSummaryLanguage(targetLanguage) {
   const existingSummary = summaries[summaryKey]?.trim() || (summaryProfile === "student" ? summaries[language]?.trim() : "") || "";
   const sourceSummary = summaries[getSummaryStorageKey("en")]?.trim() || summaries.en?.trim() || session.summary?.trim() || "";
   const isLikelyMigratedDuplicate = language !== "en" && existingSummary && sourceSummary && existingSummary === sourceSummary;
-  const forceRegenerate = getActiveSummaryLanguage(session) === language || !isSummaryCurrent(session, language);
+  const isCustomProfile = Boolean(getSummaryProfile(summaryProfile)?.custom);
+  const forceRegenerate = isCustomProfile || getActiveSummaryLanguage(session) === language || !isSummaryCurrent(session, language);
   isSummaryEditing = false;
   session.summaryLanguage = language;
   session.summaryProfile = summaryProfile;
@@ -3539,13 +3558,18 @@ function loadCustomSummaryProfiles() {
   const profiles = loadJSON(CUSTOM_SUMMARY_PROFILES_KEY, []);
   if (!Array.isArray(profiles)) return [];
   return profiles
-    .map((profile) => ({
-      code: String(profile.code ?? ""),
-      name: String(profile.name ?? "").trim(),
-      sections: Array.isArray(profile.sections)
+    .map((profile) => {
+      const code = String(profile.code ?? "");
+      const name = String(profile.name ?? "").trim();
+      const sections = Array.isArray(profile.sections)
         ? profile.sections.map((section) => String(section ?? "").trim()).filter(Boolean)
-        : []
-    }))
+        : [];
+      return {
+        code,
+        name,
+        sections: sections.length ? sections : (name ? [name] : [])
+      };
+    })
     .filter((profile) => profile.code.startsWith("custom-") && profile.name && profile.sections.length);
 }
 
@@ -3768,11 +3792,24 @@ function normalizeSummaries(value, legacySummary = "", legacyLanguage = "") {
   return Object.fromEntries(
     Object.entries(summaries)
       .map(([languageCode, text]) => [
-        isReservedSummaryKey(languageCode) ? languageCode : normalizeLanguageCode(languageCode),
+        normalizeSummaryStorageKey(languageCode),
         typeof text === "string" ? text : ""
       ])
       .filter(([languageCode, text]) => languageCode && text)
   );
+}
+
+function normalizeSummaryStorageKey(summaryKey) {
+  const rawKey = String(summaryKey ?? "").trim();
+  if (!rawKey) return "";
+  if (isReservedSummaryKey(rawKey)) return rawKey;
+  if (!rawKey.includes(":")) return normalizeLanguageCode(rawKey);
+
+  const [profileCode, languageCode] = rawKey.split(":");
+  const normalizedProfileCode = String(profileCode ?? "").trim().toLowerCase();
+  const normalizedLanguageCode = normalizeLanguageCode(languageCode);
+  if (!normalizedProfileCode || !normalizedLanguageCode) return "";
+  return `${normalizedProfileCode}:${normalizedLanguageCode}`;
 }
 
 function getSessionSummaries(session) {
