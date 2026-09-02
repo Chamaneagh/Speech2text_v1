@@ -1,4 +1,4 @@
-const CACHE_NAME = "speech2text-shell-v67";
+const CACHE_NAME = "speech2text-shell-v69";
 const SHELL = [
   "./",
   "./index.html",

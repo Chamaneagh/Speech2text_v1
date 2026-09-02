@@ -15,6 +15,7 @@ const SUMMARY_PROFILE_KEY = "speech2text.summaryProfile";
 const SUMMARY_INCLUDE_NOTES_KEY = "speech2text.summaryIncludeNotes";
 const CUSTOM_SUMMARY_PROFILES_KEY = "speech2text.customSummaryProfiles";
 const BOOKMARKS_SUMMARY_KEY = "__bookmarks";
+const SUMMARY_META_KEY = "__summaryMeta";
 const LEGACY_SEGMENTS_KEY = "speech2text.segments";
 const LEGACY_TRANSLATIONS_KEY = `${LEGACY_SEGMENTS_KEY}.translations`;
 const FINAL_TRANSCRIPT_WAIT_MS = 3_500;
@@ -228,7 +229,7 @@ const UI_STRINGS = {
     copyDate: "Copied on {date}",
     localMode: "Local mode",
     signedInAs: "Signed in as {email}",
-    signIn: "Sign in",
+    signIn: "Sign-in",
     signOut: "Sign out",
     signUp: "Create account",
     authSignInTitle: "Sign in",
@@ -445,7 +446,7 @@ const UI_STRINGS = {
     copyDate: "Copie du {date}",
     localMode: "Mode local",
     signedInAs: "Connecté: {email}",
-    signIn: "Connexion",
+    signIn: "Se connecter",
     signOut: "Déconnexion",
     signUp: "Créer un compte",
     authSignInTitle: "Connexion",
@@ -1436,7 +1437,7 @@ function renderAuthState() {
   const email = authSession?.user?.email;
   authStateElement.textContent = email ? email : "";
   authStateElement.hidden = true;
-  authButton.textContent = email ? "👤" : "↪";
+  authButton.textContent = email ? t("accountTitle") : t("signIn");
   authButton.title = email ? t("signedInAs", { email }) : t("signIn");
   authButton.setAttribute("aria-label", authButton.title);
   accountEmailElement.textContent = email ? t("signedInAs", { email }) : "";
@@ -1575,7 +1576,6 @@ function clearAuthError() {
 async function loadCloudLibrary() {
   if (!authSession?.user?.id || isSyncingCloud) return;
   isSyncingCloud = true;
-  setStatus(t("syncLoading"), "connecting");
 
   try {
     const userId = authSession.user.id;
@@ -1593,7 +1593,6 @@ async function loadCloudLibrary() {
     if (!workspacesResult.data.length && library.workspaces.length) {
       isSyncingCloud = false;
       await syncLibraryToCloud({ announce: false });
-      setStatus(t("syncLocalPushed"), "idle");
       return;
     }
 
@@ -1605,9 +1604,6 @@ async function loadCloudLibrary() {
         segments: segmentsResult.data,
         translations: translationsResult.data
       });
-      setStatus(t("syncCloudLoaded"), "idle");
-    } else {
-      setStatus(t("ready"), "idle");
     }
   } catch (error) {
     addDiagnostic(`Supabase sync: ${error.message || t("syncFailed")}`);
@@ -2535,9 +2531,12 @@ function renderNotes() {
 function saveSessionNotes() {
   const session = getActiveSession();
   if (!session) return;
+  const previousNotes = session.notes ?? "";
   session.notes = sessionNotesElement.value;
+  if (previousNotes !== session.notes) invalidateCurrentProfileSummaries(session);
   saveLibrary();
   renderNotesFoldState();
+  renderSummary();
 }
 
 function renderNotesFoldState() {
@@ -2856,6 +2855,7 @@ async function generateSummary(targetLanguage = uiLanguage) {
 
     const summaries = getSessionSummaries(session);
     summaries[getSummaryStorageKey(normalizedTargetLanguage)] = result.summary;
+    setSummaryMetadata(session, normalizedTargetLanguage);
     session.summary = result.summary;
     session.summaryLanguage = normalizedTargetLanguage;
     session.summaryProfile = summaryProfile;
@@ -2885,12 +2885,13 @@ async function selectSummaryLanguage(targetLanguage) {
   const existingSummary = summaries[summaryKey]?.trim() || (summaryProfile === "student" ? summaries[language]?.trim() : "") || "";
   const sourceSummary = summaries[getSummaryStorageKey("en")]?.trim() || summaries.en?.trim() || session.summary?.trim() || "";
   const isLikelyMigratedDuplicate = language !== "en" && existingSummary && sourceSummary && existingSummary === sourceSummary;
+  const forceRegenerate = getActiveSummaryLanguage(session) === language || !isSummaryCurrent(session, language);
   isSummaryEditing = false;
   session.summaryLanguage = language;
   session.summaryProfile = summaryProfile;
-  if (existingSummary && !isLikelyMigratedDuplicate) session.summary = existingSummary;
+  if (existingSummary && !isLikelyMigratedDuplicate && !forceRegenerate) session.summary = existingSummary;
   renderSummary();
-  if (!existingSummary || isLikelyMigratedDuplicate) {
+  if (!existingSummary || isLikelyMigratedDuplicate || forceRegenerate) {
     if (isLikelyMigratedDuplicate) {
       delete summaries[summaryKey];
       delete summaries[language];
@@ -3537,6 +3538,57 @@ function formatSummaryExportLabel(summaryKey) {
 
 function isReservedSummaryKey(key) {
   return String(key ?? "").startsWith("__");
+}
+
+function getSummaryMetadata(session) {
+  const raw = session?.summaries?.[SUMMARY_META_KEY];
+  if (!raw) return {};
+  try {
+    const value = JSON.parse(raw);
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function setSummaryMetadata(session, languageCode) {
+  if (!session) return;
+  const summaries = getSessionSummaries(session);
+  const metadata = getSummaryMetadata(session);
+  metadata[getSummaryStorageKey(languageCode)] = getCurrentSummarySignature(session);
+  summaries[SUMMARY_META_KEY] = JSON.stringify(metadata);
+}
+
+function invalidateCurrentProfileSummaries(session) {
+  if (!session?.summaries) return;
+  const metadata = getSummaryMetadata(session);
+  const prefix = `${normalizeSummaryProfile(summaryProfile)}:`;
+  let changed = false;
+  for (const key of Object.keys(metadata)) {
+    if (!key.startsWith(prefix)) continue;
+    delete metadata[key];
+    changed = true;
+  }
+  if (changed) session.summaries[SUMMARY_META_KEY] = JSON.stringify(metadata);
+}
+
+function isSummaryCurrent(session, languageCode) {
+  const summaries = getSessionSummaries(session);
+  const key = getSummaryStorageKey(languageCode);
+  if (!summaries[key]?.trim()) return false;
+  const metadata = getSummaryMetadata(session);
+  return metadata[key] === getCurrentSummarySignature(session);
+}
+
+function getCurrentSummarySignature(session) {
+  const profile = getSummaryProfile(summaryProfile);
+  return JSON.stringify({
+    profile: summaryProfile,
+    customTitle: profile?.custom ? profile.name : "",
+    customSections: profile?.custom ? profile.sections : [],
+    includeNotes: includeNotesInSummary,
+    notesHash: includeNotesInSummary ? hashText(session?.notes ?? "") : ""
+  });
 }
 
 function normalizeBookmarks(value) {

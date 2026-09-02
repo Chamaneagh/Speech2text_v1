@@ -495,7 +495,7 @@ h1 { margin: 0; font-size: 1.8rem; overflow-wrap: anywhere; }
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
-  max-width: 56px;
+  max-width: 140px;
 }
 .account-bar span {
   min-width: 0;
@@ -506,14 +506,17 @@ h1 { margin: 0; font-size: 1.8rem; overflow-wrap: anywhere; }
   white-space: nowrap;
 }
 .auth-button {
-  width: 32px;
+  width: auto;
+  max-width: 140px;
   min-height: 32px;
-  padding: 0;
+  padding: 0 10px;
   border-radius: 8px;
   background: rgba(30, 41, 59, .92);
   color: #dbeafe;
-  font-size: .95rem;
+  font-size: .8rem;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .auth-button:hover {
@@ -666,6 +669,13 @@ h1 { margin: 0; font-size: 1.8rem; overflow-wrap: anywhere; }
   color: #bfdbfe;
   font-size: .8rem;
   font-weight: 900;
+}
+
+#speak-transcript {
+  width: 36px;
+  min-width: 36px;
+  overflow: hidden;
+  line-height: 1;
 }
 .fold-summary {
   margin: 0;
@@ -1052,12 +1062,18 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
 .modal {
   width: min(420px, calc(100% - 32px));
+  max-width: calc(100% - 32px);
+  overflow: hidden;
   padding: 0;
   border: 1px solid #334155;
   border-radius: 14px;
   background: #0f172a;
   color: #f8fafc;
   box-shadow: 0 24px 80px rgba(0, 0, 0, .45);
+}
+
+.auth-modal {
+  width: min(520px, calc(100% - 32px));
 }
 
 .modal::backdrop {
@@ -1067,6 +1083,7 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
 .modal-card {
   display: grid;
+  min-width: 0;
   gap: 12px;
   padding: 18px;
 }
@@ -1188,6 +1205,8 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 }
 
 .modal-input {
+  width: 100%;
+  min-width: 0;
   min-height: 42px;
   padding: 10px 12px;
   border: 1px solid #475569;
@@ -1207,10 +1226,31 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   justify-content: flex-end;
   gap: 10px;
   margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .modal-actions button {
   min-width: 96px;
+}
+
+.auth-modal .modal-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  align-items: stretch;
+}
+
+.auth-modal .modal-actions button {
+  min-width: 0;
+}
+
+.auth-modal .link-button {
+  padding-inline: 6px;
+  line-height: 1.15;
+}
+
+.auth-modal #auth-cancel,
+.auth-modal #auth-submit {
+  min-height: 44px;
 }
 
 .export-actions {
