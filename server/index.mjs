@@ -24,7 +24,7 @@ const ttsModels = (process.env.GEMINI_TTS_MODELS ?? "gemini-2.5-flash-preview-tt
   .map((model) => model.trim())
   .filter(Boolean);
 const ttsTimeoutMs = Number(process.env.TTS_TIMEOUT_MS ?? 75_000);
-const serverVersion = "2026-09-02.admin-usage-speech-timeout";
+const serverVersion = "2026-09-02.localized-summary-headings";
 const targetLanguages = new Map([
   ["en", "English"],
   ["fr", "French"],
@@ -35,22 +35,78 @@ const summaryProfiles = new Map([
   ["student", {
     title: "Study Sheet",
     instruction: "Use concise, useful wording for a student preparing exams.",
-    sections: ["Short Summary", "Main Ideas", "Key Concepts", "Important Details", "Possible Exam Questions", "Vocabulary"]
+    sections: ["Short Summary", "Main Ideas", "Key Concepts", "Important Details", "Possible Exam Questions", "Vocabulary"],
+    localized: {
+      fr: {
+        title: "Fiche de révision",
+        sections: ["Résumé court", "Idées principales", "Notions clés", "Détails importants", "Questions possibles d'examen", "Vocabulaire"]
+      },
+      ja: {
+        title: "学習シート",
+        sections: ["短い要約", "主な考え", "重要な概念", "重要な詳細", "試験で出そうな質問", "語彙"]
+      },
+      de: {
+        title: "Lernzettel",
+        sections: ["Kurze Zusammenfassung", "Hauptideen", "Schluesselbegriffe", "Wichtige Details", "Moegliche Pruefungsfragen", "Vokabular"]
+      }
+    }
   }],
   ["business", {
     title: "Business Brief",
     instruction: "Write for a professional who needs clear decisions, priorities, risks and next actions.",
-    sections: ["Executive Summary", "Business Context", "Decisions", "Action Items", "Risks", "Opportunities", "Next Steps"]
+    sections: ["Executive Summary", "Business Context", "Decisions", "Action Items", "Risks", "Opportunities", "Next Steps"],
+    localized: {
+      fr: {
+        title: "Synthèse business",
+        sections: ["Résumé exécutif", "Contexte business", "Décisions", "Actions à mener", "Risques", "Opportunités", "Prochaines étapes"]
+      },
+      ja: {
+        title: "ビジネス概要",
+        sections: ["エグゼクティブサマリー", "ビジネス背景", "決定事項", "アクション項目", "リスク", "機会", "次のステップ"]
+      },
+      de: {
+        title: "Business-Briefing",
+        sections: ["Management-Zusammenfassung", "Geschaeftskontext", "Entscheidungen", "Massnahmen", "Risiken", "Chancen", "Naechste Schritte"]
+      }
+    }
   }],
   ["meeting", {
     title: "Meeting Notes",
     instruction: "Write as practical meeting notes that can be shared with participants after the discussion.",
-    sections: ["Overview", "Topics Discussed", "Decisions", "Action Items", "Open Questions", "Follow-ups"]
+    sections: ["Overview", "Topics Discussed", "Decisions", "Action Items", "Open Questions", "Follow-ups"],
+    localized: {
+      fr: {
+        title: "Compte rendu de réunion",
+        sections: ["Vue d'ensemble", "Sujets abordés", "Décisions", "Actions à mener", "Questions ouvertes", "Suivis"]
+      },
+      ja: {
+        title: "会議メモ",
+        sections: ["概要", "議論した内容", "決定事項", "アクション項目", "未解決の質問", "フォローアップ"]
+      },
+      de: {
+        title: "Besprechungsnotizen",
+        sections: ["Ueberblick", "Besprochene Themen", "Entscheidungen", "Massnahmen", "Offene Fragen", "Nachverfolgung"]
+      }
+    }
   }],
   ["research", {
     title: "Research Brief",
     instruction: "Write as an analytical research note, distinguishing claims, evidence and uncertainties.",
-    sections: ["Abstract", "Main Thesis", "Evidence", "Methods or Reasoning", "Limitations", "Points to Verify", "Further Questions"]
+    sections: ["Abstract", "Main Thesis", "Evidence", "Methods or Reasoning", "Limitations", "Points to Verify", "Further Questions"],
+    localized: {
+      fr: {
+        title: "Synthèse de recherche",
+        sections: ["Résumé", "Thèse principale", "Preuves", "Méthodes ou raisonnement", "Limites", "Points à vérifier", "Questions complémentaires"]
+      },
+      ja: {
+        title: "リサーチ概要",
+        sections: ["要旨", "主な論点", "根拠", "方法または推論", "限界", "確認すべき点", "追加の疑問"]
+      },
+      de: {
+        title: "Research-Briefing",
+        sections: ["Abstract", "Hauptthese", "Belege", "Methoden oder Argumentation", "Grenzen", "Zu pruefende Punkte", "Weitere Fragen"]
+      }
+    }
   }]
 ]);
 
@@ -282,11 +338,12 @@ async function summarizeText({
   sessionTitle
 }) {
   const targetLanguageName = targetLanguages.get(targetLanguage) ?? "English";
-  const profile = getSummaryProfileConfig({ summaryProfile, summaryProfileTitle, summaryProfileSections });
+  const profile = getSummaryProfileConfig({ summaryProfile, summaryProfileTitle, summaryProfileSections, targetLanguage });
   const notesText = includeNotes && notes ? notes.trim() : "";
   const prompt = [
     `Create a structured ${profile.title.toLowerCase()} in ${targetLanguageName} from this transcript.`,
-    "Return only Markdown. Do not invent facts that are not supported by the transcript.",
+    `Return only Markdown. All headings, section titles, bullets, and content must be written in ${targetLanguageName}.`,
+    "Do not invent facts that are not supported by the transcript.",
     profile.instruction,
     notesText
       ? "Use the personal notes as additional context and clarification. If notes conflict with the transcript, mention the uncertainty rather than silently overwriting the transcript."
@@ -315,9 +372,14 @@ async function summarizeText({
   throw new Error(`Summary failed after ${summaryModels.length} attempt(s). ${failures.join(" | ")}`);
 }
 
-function getSummaryProfileConfig({ summaryProfile, summaryProfileTitle, summaryProfileSections }) {
+function getSummaryProfileConfig({ summaryProfile, summaryProfileTitle, summaryProfileSections, targetLanguage }) {
   const builtIn = summaryProfiles.get(summaryProfile);
-  if (builtIn) return builtIn;
+  if (builtIn) {
+    const localized = builtIn.localized?.[targetLanguage];
+    return localized
+      ? { ...builtIn, title: localized.title, sections: localized.sections }
+      : builtIn;
+  }
 
   const title = cleanText(summaryProfileTitle, 80) || "Custom Summary";
   let sections = Array.isArray(summaryProfileSections)

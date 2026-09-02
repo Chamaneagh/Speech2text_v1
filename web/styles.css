@@ -11,6 +11,7 @@ html {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -19,6 +20,7 @@ body {
   max-width: 100%;
   min-height: 100vh;
   overflow-x: hidden;
+  overscroll-behavior-x: none;
   background: radial-gradient(circle at top, #1b3154, #0b1220 55%);
 }
 
@@ -741,6 +743,8 @@ body[data-text-size="large"] .translation-text {
 .transcript-edit {
   display: block;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 42px;
   padding: 8px 10px;
   border: 1px solid transparent;
@@ -822,6 +826,12 @@ body[data-text-size="large"] .translation-text {
 .notes-panel[data-folded="true"] .notes-header,
 .summary-panel[data-folded="true"] .summary-header {
   margin-bottom: 0;
+}
+
+.bookmarks-panel[data-folded="true"] #bookmarks-hint,
+.notes-panel[data-folded="true"] #notes-hint,
+.summary-panel[data-folded="true"] #summary-hint {
+  display: none;
 }
 .bookmarks-header h2,
 .notes-header h2,
@@ -1077,6 +1087,8 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 .modal {
   width: min(420px, calc(100% - 32px));
   max-width: calc(100% - 32px);
+  max-height: calc(100vh - 24px);
+  max-height: min(760px, calc(100dvh - 24px));
   overflow: hidden;
   padding: 0;
   border: 1px solid #334155;
@@ -1094,6 +1106,10 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   width: min(860px, calc(100% - 24px));
 }
 
+#summary-profile-dialog {
+  width: min(520px, calc(100% - 24px));
+}
+
 .modal::backdrop {
   background: rgba(2, 6, 23, .72);
   backdrop-filter: blur(4px);
@@ -1101,9 +1117,13 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
 .modal-card {
   display: grid;
+  max-height: inherit;
   min-width: 0;
   gap: 12px;
+  overflow: auto;
   padding: 18px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-card h2 {
@@ -1240,10 +1260,15 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 }
 
 .modal-actions {
+  position: sticky;
+  bottom: -18px;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 4px;
+  margin: 4px -18px -18px;
+  padding: 12px 18px 18px;
+  border-top: 1px solid rgba(148, 163, 184, .14);
+  background: linear-gradient(180deg, rgba(15, 23, 42, .86), #0f172a 32%);
   flex-wrap: wrap;
 }
 
@@ -1443,6 +1468,8 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     display: flex;
     flex-direction: column;
     width: 100%;
+    max-width: 100svw;
+    overflow-x: clip;
     padding: max(14px, env(safe-area-inset-top)) 10px max(14px, env(safe-area-inset-bottom));
   }
 
@@ -1456,6 +1483,7 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     flex-direction: column;
     gap: 12px;
     padding-inline: 10px;
+    overflow: hidden;
   }
 
   .app-header > div:first-child {
@@ -1464,6 +1492,7 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
   .header-side {
     width: 100%;
+    min-width: 0;
     justify-items: stretch;
   }
 
@@ -1471,8 +1500,14 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     position: absolute;
     top: 0;
     right: 10px;
-    max-width: none;
-    justify-content: flex-start;
+    width: min(46vw, 220px);
+    max-width: calc(100% - 20px);
+    justify-content: flex-end;
+  }
+
+  .auth-button {
+    max-width: 100%;
+    min-width: 0;
   }
 
   .status {
@@ -1483,6 +1518,8 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     justify-content: stretch;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
   }
 
   .text-size-control {
@@ -1491,7 +1528,9 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   }
 
   .action-button {
+    width: 100%;
     min-width: 0;
+    max-width: 100%;
   }
 
   .modal-input,
@@ -1499,6 +1538,17 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   .summary-input,
   .transcript-edit {
     font-size: 16px;
+  }
+
+  body[data-text-size="small"] .transcript-edit,
+  body[data-text-size="medium"] .transcript-edit,
+  body[data-text-size="large"] .transcript-edit {
+    max-width: 100%;
+    font-size: 16px;
+  }
+
+  .transcript-edit {
+    transform: translateZ(0);
   }
 
   .course-tree {
@@ -1550,9 +1600,11 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
   .summary-actions {
     width: 100%;
+    max-width: 100%;
     display: flex;
     gap: 6px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   .summary-actions .compact-button,
@@ -1572,6 +1624,8 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   body[data-recording="true"] .app-layout {
     min-height: 100svh;
     gap: 10px;
+    max-width: 100svw;
+    overflow-x: clip;
     padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom));
   }
 
@@ -1786,10 +1840,12 @@ button:disabled { cursor: not-allowed; opacity: .65; }
 
   .account-bar {
     gap: 6px;
+    width: min(42vw, 170px);
   }
 
   .auth-button {
-    padding-inline: 0;
+    padding-inline: 6px;
+    font-size: .72rem;
   }
 
   .transcript {

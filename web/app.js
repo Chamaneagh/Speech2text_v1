@@ -74,6 +74,8 @@ const UI_STRINGS = {
     recordingPreparing: "Preparing recording…",
     reconnecting: "Refreshing recording connection…",
     microphonePrompt: "Waiting for microphone permission…",
+    wakeLockActive: "Screen lock prevention active.",
+    wakeLockReleased: "Screen lock prevention was released.",
     listening: "Listening",
     stopping: "Finalizing…",
     error: "Error",
@@ -313,6 +315,8 @@ const UI_STRINGS = {
     recordingPreparing: "Préparation de l’enregistrement…",
     reconnecting: "Rafraîchissement de la connexion d’enregistrement…",
     microphonePrompt: "Autorisation micro en attente…",
+    wakeLockActive: "Maintien de l'écran éveillé actif.",
+    wakeLockReleased: "Le maintien de l'écran éveillé a été libéré.",
     listening: "Écoute en cours",
     stopping: "Finalisation…",
     error: "Erreur",
@@ -721,6 +725,7 @@ renderAll();
 if (RECORDING_PREVIEW) setRecordingLayout(true);
 registerServiceWorker();
 initializeAuth();
+document.addEventListener("visibilitychange", handleVisibilityChange);
 
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
 bookmarkCurrentButton.addEventListener("click", addCurrentBookmark);
@@ -804,6 +809,7 @@ async function startSession() {
   setRecordingLayout(true);
   setStatus(t("microphonePrompt"), "connecting");
   showActivity(t("microphonePrompt"));
+  await requestScreenWakeLock();
 
   try {
     await startAudioCapture();
@@ -812,7 +818,6 @@ async function startSession() {
     const token = await requestToken();
     await openSocket(token);
     flushQueuedAudio();
-    await requestScreenWakeLock();
     isListening = true;
     recordingStartedAt = Date.now();
     toggleButton.disabled = false;
@@ -1094,15 +1099,21 @@ async function cleanupAudio() {
 }
 
 async function requestScreenWakeLock() {
-  if (!("wakeLock" in navigator) || wakeLock) return;
+  if (!("wakeLock" in navigator) || wakeLock || document.visibilityState !== "visible") return;
   try {
     wakeLock = await navigator.wakeLock.request("screen");
     wakeLock.addEventListener("release", () => {
       wakeLock = undefined;
+      if (isListening) addDiagnostic(t("wakeLockReleased"));
     });
+    addDiagnostic(t("wakeLockActive"));
   } catch {
     wakeLock = undefined;
   }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible" && isListening) requestScreenWakeLock();
 }
 
 async function releaseScreenWakeLock() {
