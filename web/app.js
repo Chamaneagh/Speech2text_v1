@@ -43,7 +43,7 @@ const SUMMARY_PROFILES = [
 ];
 const UI_STRINGS = {
   en: {
-    sidebarTitle: "Courses",
+    sidebarTitle: "LectureHelper",
     newWorkspace: "New workspace",
     loadWorkspace: "Load",
     loadWorkspaceTitle: "Load workspace",
@@ -260,7 +260,7 @@ const UI_STRINGS = {
     syncCloudLoaded: "Cloud library loaded."
   },
   fr: {
-    sidebarTitle: "Cours",
+    sidebarTitle: "LectureHelper",
     newWorkspace: "Nouveau workspace",
     loadWorkspace: "Charger",
     loadWorkspaceTitle: "Charger un workspace",
@@ -645,6 +645,7 @@ let syncTimer;
 let localSaveTimer;
 let isSyncingCloud = false;
 let isApplyingCloudLibrary = false;
+let cloudLibraryLoadedUserId = "";
 let isCoursePanelCollapsed = false;
 let transcriptEditTimer;
 let wakeLock;
@@ -1424,20 +1425,28 @@ async function initializeAuth() {
   if (error) addDiagnostic(`Supabase auth: ${error.message}`);
   authSession = data?.session;
   renderAuthState();
-  if (authSession) loadCloudLibrary();
+  loadCloudLibraryOnce(authSession);
 
   supabase.auth.onAuthStateChange((_event, session) => {
     authSession = session;
     renderAuthState();
-    if (session) loadCloudLibrary();
+    if (!session) cloudLibraryLoadedUserId = "";
+    loadCloudLibraryOnce(session);
   });
+}
+
+function loadCloudLibraryOnce(session) {
+  const userId = session?.user?.id;
+  if (!userId || cloudLibraryLoadedUserId === userId) return;
+  cloudLibraryLoadedUserId = userId;
+  loadCloudLibrary();
 }
 
 function renderAuthState() {
   const email = authSession?.user?.email;
   authStateElement.textContent = email ? email : "";
   authStateElement.hidden = true;
-  authButton.textContent = email ? t("accountTitle") : t("signIn");
+  authButton.textContent = email ? email : t("signIn");
   authButton.title = email ? t("signedInAs", { email }) : t("signIn");
   authButton.setAttribute("aria-label", authButton.title);
   accountEmailElement.textContent = email ? t("signedInAs", { email }) : "";
@@ -1473,6 +1482,7 @@ async function signOut() {
     return;
   }
   accountDialog.close();
+  cloudLibraryLoadedUserId = "";
   setStatus(t("authSignedOut"), "idle");
 }
 
@@ -1493,7 +1503,13 @@ async function handleAuthSubmit(event) {
   const email = authEmailInput.value.trim();
   const password = authPasswordInput.value;
   const authCall = authMode === "signUp"
-    ? supabase.auth.signUp({ email, password })
+    ? supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin
+        }
+      })
     : supabase.auth.signInWithPassword({ email, password });
 
   const { data, error } = await authCall;
@@ -1508,7 +1524,7 @@ async function handleAuthSubmit(event) {
   authDialog.close();
   setStatus(authMode === "signUp" && !data.session ? t("authCheckEmail") : t("authSignedIn"), "idle");
   renderAuthState();
-  if (authSession) loadCloudLibrary();
+  loadCloudLibraryOnce(authSession);
 }
 
 async function sendPasswordReset() {
@@ -1606,6 +1622,7 @@ async function loadCloudLibrary() {
       });
     }
   } catch (error) {
+    cloudLibraryLoadedUserId = "";
     addDiagnostic(`Supabase sync: ${error.message || t("syncFailed")}`);
     showError(error.message || t("syncFailed"));
     setStatus(t("syncFailed"), "error");
@@ -1774,11 +1791,11 @@ async function syncLibraryToCloud({ announce = true } = {}) {
     await deleteCloudTable("courses", userId);
     await deleteCloudTable("workspaces", userId);
 
-    await insertCloudRows("workspaces", workspaces);
-    await insertCloudRows("courses", courses);
-    await insertCloudRows("lecture_sessions", sessions);
-    await insertCloudRows("transcript_segments", segments);
-    await insertCloudRows("session_translations", translations);
+    await upsertCloudRows("workspaces", workspaces);
+    await upsertCloudRows("courses", courses);
+    await upsertCloudRows("lecture_sessions", sessions);
+    await upsertCloudRows("transcript_segments", segments);
+    await upsertCloudRows("session_translations", translations, { onConflict: "session_id,target_language" });
 
     const { error: preferenceError } = await supabase.from("user_preferences").upsert({
       user_id: userId,
@@ -1801,10 +1818,10 @@ async function deleteCloudTable(tableName, userId) {
   if (deleteError) throw deleteError;
 }
 
-async function insertCloudRows(tableName, rows) {
+async function upsertCloudRows(tableName, rows, options = {}) {
   if (!rows.length) return;
 
-  const { error: insertError } = await supabase.from(tableName).insert(rows);
+  const { error: insertError } = await supabase.from(tableName).upsert(rows, options);
   if (insertError) throw insertError;
 }
 
