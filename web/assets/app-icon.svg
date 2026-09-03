@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>LectureHelper</title>
+  <rect width="128" height="128" rx="30" fill="#050816"/>
+  <rect x="10" y="10" width="108" height="108" rx="25" fill="#0f1d33" stroke="#1d4ed8" stroke-width="4"/>
+  <path d="M34 33v61h39" fill="none" stroke="#f8fafc" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M77 48c5 4 8 10 8 16s-3 12-8 16" fill="none" stroke="#93c5fd" stroke-width="7" stroke-linecap="round"/>
+  <path d="M90 36c8 7 13 17 13 28s-5 21-13 28" fill="none" stroke="#3b82f6" stroke-width="7" stroke-linecap="round"/>
+</svg>

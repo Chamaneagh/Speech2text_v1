@@ -1,10 +1,12 @@
-const CACHE_NAME = "speech2text-shell-v86";
+const CACHE_NAME = "speech2text-shell-v90";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
+  "./assets/app-icon.svg",
+  "./assets/app-icon-lh-wave.svg",
   "./assets/flags/gb.svg",
   "./assets/flags/fr.svg",
   "./assets/flags/jp.svg",

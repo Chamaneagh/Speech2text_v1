@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>LectureHelper LH wave concept</title>
+  <rect width="128" height="128" rx="30" fill="#050816"/>
+  <rect x="10" y="10" width="108" height="108" rx="25" fill="#0f1d33" stroke="#1d4ed8" stroke-width="4"/>
+  <path d="M34 33v62h31" fill="none" stroke="#f8fafc" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M75 92V36" fill="none" stroke="#f8fafc" stroke-width="10" stroke-linecap="round"/>
+  <path d="M75 64c8-22 18-22 26 0s18 22 26 0" fill="none" stroke="#60a5fa" stroke-width="9" stroke-linecap="round"/>
+</svg>

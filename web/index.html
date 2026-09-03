@@ -2,15 +2,28 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#0b1220">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=86">
-    <title>Speech2Text</title>
+    <link rel="icon" href="./assets/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css?v=90">
+    <title>LectureHelper</title>
   </head>
   <body>
+    <header class="app-topbar">
+      <div class="app-topbar-inner">
+        <div class="app-brand">
+          <img class="app-logo" src="./assets/app-icon.svg" alt="" aria-hidden="true">
+          <span id="app-title" class="app-title">LectureHelper</span>
+        </div>
+        <div class="account-bar">
+          <span id="auth-state">Local mode</span>
+          <button id="auth-button" class="auth-button" type="button">Sign in</button>
+        </div>
+      </div>
+    </header>
     <div class="app-layout">
       <aside id="course-panel" class="course-sidebar" aria-label="Organisation des cours">
         <button id="course-panel-summary" class="course-panel-summary" type="button">
@@ -19,10 +32,6 @@
         </button>
         <div class="sidebar-header">
           <h2 id="sidebar-title">Courses</h2>
-          <div class="language-switch" aria-label="Interface language">
-            <button id="ui-en" class="language-button" type="button" aria-label="English">EN</button>
-            <button id="ui-fr" class="language-button" type="button" aria-label="Français">FR</button>
-          </div>
           <button id="course-panel-toggle" class="panel-toggle-button" type="button">▴</button>
           <div class="workspace-bar">
             <button id="active-workspace-title" class="workspace-title" type="button">My Workspace</button>
@@ -39,10 +48,6 @@
           <h1 id="active-session-title">Lecture</h1>
         </div>
         <div class="header-side">
-          <div class="account-bar">
-            <span id="auth-state">Local mode</span>
-            <button id="auth-button" class="auth-button" type="button">Sign in</button>
-          </div>
           <div id="status" class="status" data-state="idle">Prêt</div>
           <div class="top-actions" aria-label="Lecture actions">
             <div class="text-size-control" role="group" aria-label="Text size">
@@ -74,7 +79,7 @@
             <button class="transcript-tab" type="button" data-transcript-tab="ja">日本語</button>
             <button class="transcript-tab" type="button" data-transcript-tab="de">Deutsch</button>
           </div>
-          <button id="speak-transcript" class="fold-button" type="button" disabled>▶</button>
+          <button id="speak-transcript" class="fold-button" type="button" disabled hidden>▶</button>
           <button id="transcript-fold" class="fold-button" type="button">▴</button>
         </div>
         <p id="transcript-fold-summary" class="fold-summary" hidden>Original</p>
@@ -115,6 +120,7 @@
             <span id="summary-hint">Generated study sheet</span>
           </div>
           <div class="summary-header-actions">
+            <button id="transcript-fold-from-summary" class="fold-button transcript-jump-fold" type="button" hidden>▴</button>
             <button id="summary-settings" class="fold-button" type="button">⚙</button>
             <button id="summary-fold" class="fold-button" type="button">▴</button>
           </div>
@@ -165,6 +171,13 @@
       <form id="auth-form" method="dialog" class="modal-card">
         <h2 id="auth-title">Sign in</h2>
         <p id="auth-description" class="modal-message">Use your account to save lectures online.</p>
+        <div class="modal-language-row">
+          <span class="modal-language-label">Language</span>
+          <div class="language-switch" aria-label="Interface language">
+            <button class="language-button" type="button" data-interface-language="en" aria-label="English">EN</button>
+            <button class="language-button" type="button" data-interface-language="fr" aria-label="Français">FR</button>
+          </div>
+        </div>
         <label id="auth-email-label" for="auth-email">Email</label>
         <input id="auth-email" class="modal-input" type="email" autocomplete="email" required>
         <label id="auth-password-label" for="auth-password">Password</label>
@@ -183,6 +196,13 @@
       <form method="dialog" class="modal-card">
         <h2 id="account-title">Account</h2>
         <p id="account-email" class="modal-message"></p>
+        <div class="modal-language-row">
+          <span class="modal-language-label">Language</span>
+          <div class="language-switch" aria-label="Interface language">
+            <button class="language-button" type="button" data-interface-language="en" aria-label="English">EN</button>
+            <button class="language-button" type="button" data-interface-language="fr" aria-label="Français">FR</button>
+          </div>
+        </div>
         <div class="modal-actions">
           <button id="account-admin" class="secondary-button" type="button" hidden>Admin</button>
           <button id="account-close" class="secondary-button" type="button">Close</button>
@@ -261,6 +281,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=86"></script>
+    <script type="module" src="./app.js?v=90"></script>
   </body>
 </html>

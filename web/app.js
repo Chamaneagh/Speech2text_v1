@@ -50,7 +50,8 @@ const SUMMARY_PROFILES = [
 ];
 const UI_STRINGS = {
   en: {
-    sidebarTitle: "LectureHelper",
+    sidebarTitle: "Courses",
+    interfaceLanguage: "Language",
     newWorkspace: "New workspace",
     loadWorkspace: "Load",
     loadWorkspaceTitle: "Load workspace",
@@ -293,7 +294,8 @@ const UI_STRINGS = {
     syncCloudLoaded: "Cloud library loaded."
   },
   fr: {
-    sidebarTitle: "LectureHelper",
+    sidebarTitle: "Cours",
+    interfaceLanguage: "Langue",
     newWorkspace: "Nouveau workspace",
     loadWorkspace: "Charger",
     loadWorkspaceTitle: "Charger un workspace",
@@ -562,8 +564,8 @@ const coursePanelCurrentElement = document.querySelector("#course-panel-current"
 const newWorkspaceButton = document.querySelector("#new-workspace");
 const loadWorkspaceButton = document.querySelector("#load-workspace");
 const activeWorkspaceTitleElement = document.querySelector("#active-workspace-title");
-const uiEnglishButton = document.querySelector("#ui-en");
-const uiFrenchButton = document.querySelector("#ui-fr");
+const interfaceLanguageButtons = [...document.querySelectorAll("[data-interface-language]")];
+const interfaceLanguageLabelElements = [...document.querySelectorAll(".modal-language-label")];
 const sidebarTitleElement = document.querySelector("#sidebar-title");
 const statusElement = document.querySelector("#status");
 const transcriptElement = document.querySelector("#transcript");
@@ -602,6 +604,7 @@ const sessionSummaryPreviewElement = document.querySelector("#session-summary-pr
 const summaryPanelElement = document.querySelector(".summary-panel");
 const summaryFoldButton = document.querySelector("#summary-fold");
 const summaryFoldSummaryElement = document.querySelector("#summary-fold-summary");
+const transcriptFoldFromSummaryButton = document.querySelector("#transcript-fold-from-summary");
 const summaryLanguageButtons = [...document.querySelectorAll("[data-summary-language]")];
 const editSummaryButton = document.querySelector("#edit-summary");
 const copySummaryButton = document.querySelector("#copy-summary");
@@ -723,6 +726,7 @@ let activeInlineEdit;
 let wakeLock;
 let speechAudio;
 let speechPlaybackToken = 0;
+let lastTouchEndAt = 0;
 const speechCache = new Map();
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
@@ -735,6 +739,10 @@ if (RECORDING_PREVIEW) setRecordingLayout(true);
 registerServiceWorker();
 initializeAuth();
 document.addEventListener("visibilitychange", handleVisibilityChange);
+document.addEventListener("gesturestart", preventPageZoom, { passive: false });
+document.addEventListener("gesturechange", preventPageZoom, { passive: false });
+document.addEventListener("gestureend", preventPageZoom, { passive: false });
+document.addEventListener("touchend", preventDoubleTapZoom, { passive: false });
 
 toggleButton.addEventListener("click", () => (isListening ? stopSession() : startSession()));
 bookmarkCurrentButton.addEventListener("click", addCurrentBookmark);
@@ -742,8 +750,9 @@ copyAllButton.addEventListener("click", copyFullTranscript);
 exportSessionButton.addEventListener("click", openExportDialog);
 searchWorkspaceButton.addEventListener("click", openSearchDialog);
 clearButton.addEventListener("click", clearTranscript);
-speakTranscriptButton.addEventListener("click", toggleSpeechPlayback);
+speakTranscriptButton?.addEventListener("click", toggleSpeechPlayback);
 transcriptFoldButton.addEventListener("click", toggleTranscriptFold);
+transcriptFoldFromSummaryButton?.addEventListener("click", foldTranscriptFromSummary);
 notesFoldButton.addEventListener("click", toggleNotesFold);
 bookmarksFoldButton.addEventListener("click", toggleBookmarksFold);
 summarySettingsButton.addEventListener("click", openSummaryProfileDialog);
@@ -764,8 +773,9 @@ activeWorkspaceTitleElement.addEventListener("dblclick", (event) => {
   const workspace = getActiveWorkspace();
   if (workspace) startInlineEdit(activeWorkspaceTitleElement, workspace.name, (name) => renameWorkspace(workspace.id, name));
 });
-uiEnglishButton.addEventListener("click", () => setInterfaceLanguage("en"));
-uiFrenchButton.addEventListener("click", () => setInterfaceLanguage("fr"));
+for (const button of interfaceLanguageButtons) {
+  button.addEventListener("click", () => setInterfaceLanguage(button.dataset.interfaceLanguage));
+}
 subjectCancelButton.addEventListener("click", () => subjectDialog.close());
 subjectForm.addEventListener("submit", createSubjectFromDialog);
 sessionNotesElement.addEventListener("input", saveSessionNotes);
@@ -774,6 +784,7 @@ customProfileAddButton.addEventListener("click", createCustomSummaryProfile);
 sessionSummaryElement.addEventListener("input", saveSessionSummary);
 sessionSummaryElement.addEventListener("blur", finishSummaryEdit);
 editSummaryButton.addEventListener("click", editSummary);
+sessionSummaryPreviewElement.addEventListener("click", editSummary);
 for (const button of summaryLanguageButtons) {
   button.addEventListener("click", () => selectSummaryLanguage(button.dataset.summaryLanguage));
 }
@@ -1351,6 +1362,7 @@ function renderAll() {
 function renderInterfaceText() {
   document.documentElement.lang = uiLanguage;
   sidebarTitleElement.textContent = t("sidebarTitle");
+  for (const label of interfaceLanguageLabelElements) label.textContent = t("interfaceLanguage");
   newWorkspaceButton.textContent = t("newWorkspace");
   loadWorkspaceButton.textContent = t("loadWorkspace");
   workspaceDialogTitleElement.textContent = t("loadWorkspaceTitle");
@@ -1424,12 +1436,13 @@ function renderInterfaceText() {
   sessionSummaryElement.placeholder = t("summaryPlaceholder");
   editSummaryButton.textContent = t("editSummary");
   copySummaryButton.textContent = t("copySummary");
-  renderLanguageButton(uiEnglishButton, "en", { showCode: false });
-  renderLanguageButton(uiFrenchButton, "fr", { showCode: false });
+  for (const button of interfaceLanguageButtons) {
+    const language = button.dataset.interfaceLanguage;
+    renderLanguageButton(button, language, { showCode: false });
+    button.dataset.active = uiLanguage === language ? "true" : "false";
+  }
   renderSummaryProfileOptions();
   renderSummaryFoldState();
-  uiEnglishButton.dataset.active = uiLanguage === "en" ? "true" : "false";
-  uiFrenchButton.dataset.active = uiLanguage === "fr" ? "true" : "false";
   coursePanelToggleButton.title = t("collapseCoursePanel");
   coursePanelToggleButton.setAttribute("aria-label", t("collapseCoursePanel"));
   coursePanelSummaryButton.title = t("expandCoursePanel");
@@ -2560,6 +2573,7 @@ function renderSpeechButton() {
   const canSpeak = Boolean(session && text && (isOriginal || session.translations?.[activeTranscriptTab]));
   const isGenerating = Boolean(speakingKey && speakingKey === speechKey);
   const isPlaying = Boolean(speechAudio && !speechAudio.paused && speechAudio.dataset.speechKey === speechKey);
+  speakTranscriptButton.hidden = true;
   speakTranscriptButton.disabled = !canSpeak || isListening || isStopping || translatingTo || (Boolean(speakingKey) && !isGenerating);
   speakTranscriptButton.textContent = isGenerating ? "…" : (isPlaying ? "■" : "▶");
   speakTranscriptButton.title = isPlaying ? t("stopSpeech") : t(canSpeak ? "playSpeech" : "speechUnavailable");
@@ -2582,11 +2596,25 @@ function renderTranscriptFoldState() {
   });
   transcriptElement.hidden = isTranscriptFolded;
   transcriptCardElement.dataset.folded = isTranscriptFolded ? "true" : "false";
+  if (transcriptFoldFromSummaryButton) {
+    const canFoldFromSummary = Boolean(activeText || getActiveInterimText()) && !isTranscriptFolded && !isSummaryFolded;
+    transcriptFoldFromSummaryButton.hidden = !canFoldFromSummary;
+    transcriptFoldFromSummaryButton.disabled = transcriptFoldButton.disabled;
+    transcriptFoldFromSummaryButton.title = t("foldTranscript");
+    transcriptFoldFromSummaryButton.setAttribute("aria-label", t("foldTranscript"));
+  }
 }
 
 function toggleTranscriptFold() {
   if (isListening || isStopping) return;
   isTranscriptFolded = !isTranscriptFolded;
+  renderTranscriptFoldState();
+  renderSegments();
+}
+
+function foldTranscriptFromSummary() {
+  if (isTranscriptFolded || transcriptFoldButton.disabled) return;
+  isTranscriptFolded = true;
   renderTranscriptFoldState();
   renderSegments();
 }
@@ -2784,6 +2812,16 @@ function splitTextForSpeech(text) {
 
 function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function preventPageZoom(event) {
+  event.preventDefault();
+}
+
+function preventDoubleTapZoom(event) {
+  const now = Date.now();
+  if (now - lastTouchEndAt < 350) event.preventDefault();
+  lastTouchEndAt = now;
 }
 
 function stopSpeechPlayback() {
@@ -3110,21 +3148,23 @@ function renderSummary() {
   sessionSummaryElement.value = displayText;
   sessionSummaryPreviewElement.innerHTML = showPreview ? renderMarkdown(summary) : "";
   sessionSummaryPreviewElement.hidden = !showPreview;
+  sessionSummaryPreviewElement.title = t("editSummary");
   sessionSummaryElement.hidden = isSummaryFolded || showPreview;
-  sessionSummaryElement.disabled = !session || isListening || isStopping || Boolean(summarizingTo);
-  editSummaryButton.disabled = !summary.trim() || isListening || isStopping || Boolean(summarizingTo);
+  sessionSummaryElement.disabled = !session || Boolean(summarizingTo);
+  editSummaryButton.disabled = !summary.trim() || Boolean(summarizingTo);
   copySummaryButton.disabled = !summary.trim() || Boolean(summarizingTo);
 
   for (const button of summaryLanguageButtons) {
     const language = button.dataset.summaryLanguage;
     if (summarizingTo === language) button.textContent = "...";
     else renderLanguageButton(button, language);
-    button.disabled = !session || !hasTranscript || isListening || isStopping || Boolean(summarizingTo);
+    button.disabled = !session || !hasTranscript || Boolean(summarizingTo);
     button.dataset.active = summaryLanguage === language ? "true" : "false";
     button.title = `${t("generateSummary")} - ${getLanguageLabel(language)}`;
     button.setAttribute("aria-pressed", summaryLanguage === language ? "true" : "false");
   }
   renderSummaryFoldState(summary, summaryLanguage);
+  renderTranscriptFoldState();
 }
 
 function saveSessionSummary() {
@@ -3142,7 +3182,7 @@ function saveSessionSummary() {
 }
 
 function editSummary() {
-  if (isListening || isStopping || summarizingTo) return;
+  if (summarizingTo) return;
   isSummaryEditing = true;
   renderSummary();
   sessionSummaryElement.focus();
