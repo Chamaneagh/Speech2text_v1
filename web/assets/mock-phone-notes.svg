@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 844" role="img" aria-labelledby="title">
+  <title>LectureHelper mobile notes mock screenshot</title>
+  <rect width="390" height="844" rx="42" fill="#020617"/>
+  <rect x="18" y="18" width="354" height="808" rx="34" fill="#071122" stroke="#1e3a5f"/>
+  <rect x="42" y="70" width="306" height="240" rx="18" fill="#0f172a" stroke="#334155"/>
+  <text x="64" y="118" fill="#bfdbfe" font-family="Arial, sans-serif" font-size="25" font-weight="900">Bookmarks</text>
+  <rect x="64" y="148" width="260" height="58" rx="12" fill="#020617" stroke="#334155"/>
+  <text x="84" y="174" fill="#93c5fd" font-family="Arial, sans-serif" font-size="13" font-weight="800">08:42</text>
+  <text x="84" y="194" fill="#f8fafc" font-family="Arial, sans-serif" font-size="16">Definition to review</text>
+  <rect x="64" y="220" width="260" height="58" rx="12" fill="#020617" stroke="#334155"/>
+  <text x="84" y="246" fill="#93c5fd" font-family="Arial, sans-serif" font-size="13" font-weight="800">21:16</text>
+  <text x="84" y="266" fill="#f8fafc" font-family="Arial, sans-serif" font-size="16">Exam example</text>
+  <rect x="42" y="342" width="306" height="360" rx="18" fill="#0f172a" stroke="#334155"/>
+  <text x="64" y="390" fill="#bfdbfe" font-family="Arial, sans-serif" font-size="25" font-weight="900">Notes</text>
+  <rect x="64" y="420" width="260" height="224" rx="12" fill="#020617" stroke="#334155"/>
+  <text x="84" y="464" fill="#f8fafc" font-family="Arial, sans-serif" font-size="18">Add the professor's</text>
+  <text x="84" y="500" fill="#f8fafc" font-family="Arial, sans-serif" font-size="18">example about symmetry.</text>
+  <text x="84" y="568" fill="#93c5fd" font-family="Arial, sans-serif" font-size="16">Included in the</text>
+  <text x="84" y="600" fill="#93c5fd" font-family="Arial, sans-serif" font-size="16">generated study sheet.</text>
+</svg>

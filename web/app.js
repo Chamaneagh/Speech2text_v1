@@ -50,7 +50,7 @@ const SUMMARY_PROFILES = [
 ];
 const UI_STRINGS = {
   en: {
-    sidebarTitle: "Courses",
+    sidebarTitle: "Workspace",
     interfaceLanguage: "Language",
     newWorkspace: "New workspace",
     loadWorkspace: "Load",
@@ -101,6 +101,7 @@ const UI_STRINGS = {
     searchPlaceholder: "Search all lectures...",
     searchEmpty: "No result.",
     searchHint: "Type a keyword to search this workspace.",
+    searchAllWorkspaces: "Search all workspaces",
     bookmarkAction: "Mark",
     bookmarkTooltip: "Bookmark the current moment",
     bookmarkAdded: "Bookmark added.",
@@ -294,7 +295,7 @@ const UI_STRINGS = {
     syncCloudLoaded: "Cloud library loaded."
   },
   fr: {
-    sidebarTitle: "Cours",
+    sidebarTitle: "Workspace",
     interfaceLanguage: "Langue",
     newWorkspace: "Nouveau workspace",
     loadWorkspace: "Charger",
@@ -345,6 +346,7 @@ const UI_STRINGS = {
     searchPlaceholder: "Rechercher dans toutes les séances...",
     searchEmpty: "Aucun résultat.",
     searchHint: "Entre un mot-clé pour chercher dans ce workspace.",
+    searchAllWorkspaces: "Rechercher dans tous les workspaces",
     bookmarkAction: "Marquer",
     bookmarkTooltip: "Marquer le moment en cours",
     bookmarkAdded: "Marque-page ajouté.",
@@ -678,6 +680,8 @@ const exportCloseButton = document.querySelector("#export-close");
 const searchDialog = document.querySelector("#search-dialog");
 const searchTitleElement = document.querySelector("#search-title");
 const searchInputElement = document.querySelector("#search-input");
+const searchAllWorkspacesInput = document.querySelector("#search-all-workspaces");
+const searchAllWorkspacesLabelElement = document.querySelector("#search-all-workspaces-label");
 const searchResultsElement = document.querySelector("#search-results");
 const searchCloseButton = document.querySelector("#search-close");
 
@@ -727,6 +731,9 @@ let wakeLock;
 let speechAudio;
 let speechPlaybackToken = 0;
 let lastTouchEndAt = 0;
+let lastRenameTapTarget;
+let lastRenameTapAt = 0;
+let activeSearchHighlight;
 const speechCache = new Map();
 let uiLanguage = localStorage.getItem(UI_LANGUAGE_KEY) || "en";
 let textSize = normalizeTextSize(localStorage.getItem(TEXT_SIZE_KEY));
@@ -768,8 +775,8 @@ coursePanelSummaryButton.addEventListener("click", () => setCoursePanelCollapsed
 newWorkspaceButton.addEventListener("click", openWorkspaceDialog);
 loadWorkspaceButton.addEventListener("click", openWorkspaceSwitcher);
 workspaceCloseButton.addEventListener("click", () => workspaceDialog.close());
-activeWorkspaceTitleElement.addEventListener("dblclick", (event) => {
-  event.stopPropagation();
+attachRenameTrigger(activeWorkspaceTitleElement, (event) => {
+  event?.stopPropagation();
   const workspace = getActiveWorkspace();
   if (workspace) startInlineEdit(activeWorkspaceTitleElement, workspace.name, (name) => renameWorkspace(workspace.id, name));
 });
@@ -810,6 +817,7 @@ exportPdfButton.addEventListener("click", () => exportCurrentSession("pdf"));
 exportWordButton.addEventListener("click", () => exportCurrentSession("word"));
 exportCloseButton.addEventListener("click", () => exportDialog.close());
 searchInputElement.addEventListener("input", renderSearchResults);
+searchAllWorkspacesInput.addEventListener("change", renderSearchResults);
 searchCloseButton.addEventListener("click", () => searchDialog.close());
 
 async function startSession() {
@@ -1321,6 +1329,7 @@ function selectSession(subjectId, sessionId) {
   library.activeSubjectId = subjectId;
   library.activeSessionId = sessionId;
   translatingTo = "";
+  activeSearchHighlight = undefined;
   clearError();
   saveLibrary();
   renderAll();
@@ -1373,7 +1382,9 @@ function renderInterfaceText() {
   bookmarkCurrentButton.setAttribute("aria-label", t("bookmarkTooltip"));
   setActionButton(copyAllButton, "⧉", t("copyAllShort"));
   setActionButton(exportSessionButton, "⇩", t("exportSession"));
-  setActionButton(searchWorkspaceButton, "⌕", t("searchWorkspace"));
+  searchWorkspaceButton.textContent = `⌕ ${t("searchWorkspace")}`;
+  searchWorkspaceButton.title = t("searchWorkspace");
+  searchWorkspaceButton.setAttribute("aria-label", t("searchWorkspace"));
   setActionButton(clearButton, "⌫", t("clearShort"));
   renderTranscriptTabs();
   renderTextSizeControl();
@@ -1432,6 +1443,7 @@ function renderInterfaceText() {
   exportCloseButton.textContent = t("close");
   searchTitleElement.textContent = t("searchTitle");
   searchInputElement.placeholder = t("searchPlaceholder");
+  searchAllWorkspacesLabelElement.textContent = t("searchAllWorkspaces");
   searchCloseButton.textContent = t("close");
   sessionSummaryElement.placeholder = t("summaryPlaceholder");
   editSummaryButton.textContent = t("editSummary");
@@ -2114,8 +2126,8 @@ function renderLibrary() {
     subjectTitle.type = "button";
     subjectTitle.textContent = subject.name;
     subjectTitle.title = t("rename");
-    subjectTitle.addEventListener("dblclick", (event) => {
-      event.stopPropagation();
+    attachRenameTrigger(subjectTitle, (event) => {
+      event?.stopPropagation();
       startInlineEdit(subjectTitle, subject.name, (name) => renameSubject(subject.id, name));
     });
     const subjectActions = document.createElement("div");
@@ -2159,8 +2171,8 @@ function renderLibrary() {
       button.title = t("rename");
       button.dataset.active = session.id === library.activeSessionId ? "true" : "false";
       button.addEventListener("click", () => scheduleSessionSelect(subject.id, session.id));
-      button.addEventListener("dblclick", (event) => {
-        event.stopPropagation();
+      attachRenameTrigger(button, (event) => {
+        event?.stopPropagation();
         window.clearTimeout(pendingSessionSelect);
         startInlineEdit(button, session.title, (title) => renameSession(subject.id, session.id, title));
       });
@@ -2194,6 +2206,9 @@ function renderLibrary() {
       sessionList.append(sessionRow);
     }
 
+    const addSessionRow = document.createElement("div");
+    addSessionRow.className = "session-row session-add-row";
+
     const addSessionButton = document.createElement("button");
     addSessionButton.className = "session-add-button";
     addSessionButton.type = "button";
@@ -2201,11 +2216,24 @@ function renderLibrary() {
     addSessionButton.title = t("addSessionTooltip");
     addSessionButton.setAttribute("aria-label", t("addSessionTooltip"));
     addSessionButton.addEventListener("click", () => createSession(subject.id));
-    sessionList.append(addSessionButton);
+    addSessionRow.append(
+      addSessionButton,
+      renderSessionRowSpacer("session-record-spacer"),
+      renderSessionRowSpacer("session-order-spacer"),
+      renderSessionRowSpacer("session-delete-spacer")
+    );
+    sessionList.append(addSessionRow);
     subjectBlock.append(sessionList);
 
     courseTreeElement.append(subjectBlock);
   }
+}
+
+function renderSessionRowSpacer(className) {
+  const spacer = document.createElement("span");
+  spacer.className = className;
+  spacer.setAttribute("aria-hidden", "true");
+  return spacer;
 }
 
 function renderWorkspaceSwitcher() {
@@ -2389,7 +2417,7 @@ function toggleSubject(subjectId) {
   const subject = findSubjectLocation(subjectId)?.subject;
   if (!subject) return;
   subject.collapsed = !subject.collapsed;
-  saveLibrary();
+  flushLocalLibrarySave();
   renderLibrary();
 }
 
@@ -2462,6 +2490,33 @@ function startInlineEdit(target, currentValue, onCommit) {
   input.select();
 }
 
+function attachRenameTrigger(target, onRename) {
+  target.dataset.renameTrigger = "true";
+  target.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onRename(event);
+  });
+  target.addEventListener(
+    "touchend",
+    (event) => {
+      if (event.changedTouches.length !== 1) return;
+      const now = Date.now();
+      if (lastRenameTapTarget === target && now - lastRenameTapAt < 450) {
+        event.preventDefault();
+        event.stopPropagation();
+        lastRenameTapTarget = undefined;
+        lastRenameTapAt = 0;
+        onRename(event);
+        return;
+      }
+      lastRenameTapTarget = target;
+      lastRenameTapAt = now;
+    },
+    { passive: false }
+  );
+}
+
 function restoreInlineEditTarget(target, input = undefined) {
   if (!target || target.isConnected) return;
   const activeInput = input ?? (activeInlineEdit?.target === target ? activeInlineEdit.input : undefined);
@@ -2496,7 +2551,15 @@ function renderSegments() {
     if (activeTranslation) {
       const paragraph = document.createElement("p");
       paragraph.className = "transcript-segment translation-text";
-      paragraph.textContent = activeTranslation;
+      if (activeSearchHighlight?.sessionId === session?.id && activeSearchHighlight.tab === activeTranscriptTab) {
+        paragraph.innerHTML = renderSearchHighlightedText(activeTranslation, activeSearchHighlight.query);
+        paragraph.addEventListener("click", () => {
+          activeSearchHighlight = undefined;
+          renderSegments();
+        });
+      } else {
+        paragraph.textContent = activeTranslation;
+      }
       transcriptElement.append(paragraph);
       return;
     }
@@ -2515,7 +2578,7 @@ function renderSegments() {
     transcriptElement.append(empty);
     return;
   }
-  const canEdit = !isListening && !isStopping;
+  const canEdit = !isListening && !isStopping && !activeSearchHighlight;
   if (canEdit) {
     const textarea = document.createElement("textarea");
     textarea.className = "transcript-segment transcript-edit transcript-edit-all";
@@ -2533,7 +2596,16 @@ function renderSegments() {
   for (const segment of segments) {
     const paragraph = document.createElement("p");
     paragraph.className = "transcript-segment";
-    paragraph.textContent = segment.text;
+    if (activeSearchHighlight?.sessionId === session?.id && activeSearchHighlight.tab === "original") {
+      paragraph.innerHTML = renderSearchHighlightedText(segment.text, activeSearchHighlight.query);
+      paragraph.title = t("editTranscriptSegment");
+      paragraph.addEventListener("click", () => {
+        activeSearchHighlight = undefined;
+        renderSegments();
+      });
+    } else {
+      paragraph.textContent = segment.text;
+    }
     transcriptElement.append(paragraph);
   }
   if (activeInterim) showInterimTranscript(activeInterim);
@@ -2622,6 +2694,7 @@ function foldTranscriptFromSummary() {
 async function selectTranscriptTab(tab) {
   if (isListening || isStopping || translatingTo) return;
   stopSpeechPlayback();
+  activeSearchHighlight = undefined;
   if (tab === "original") {
     activeTranscriptTab = "original";
     renderTranscriptTabs();
@@ -2819,6 +2892,10 @@ function preventPageZoom(event) {
 }
 
 function preventDoubleTapZoom(event) {
+  if (event.target?.closest?.("[data-rename-trigger], input, textarea, select")) {
+    lastTouchEndAt = Date.now();
+    return;
+  }
   const now = Date.now();
   if (now - lastTouchEndAt < 350) event.preventDefault();
   lastTouchEndAt = now;
@@ -3733,6 +3810,7 @@ function slugify(value) {
 
 function openSearchDialog() {
   searchInputElement.value = "";
+  searchAllWorkspacesInput.checked = false;
   renderSearchResults();
   searchDialog.showModal();
   window.setTimeout(() => searchInputElement.focus(), 0);
@@ -3749,7 +3827,7 @@ function renderSearchResults() {
     return;
   }
 
-  const results = searchWorkspace(query);
+  const results = searchLibrary(query, searchAllWorkspacesInput.checked);
   if (!results.length) {
     const empty = document.createElement("p");
     empty.className = "search-empty";
@@ -3763,39 +3841,45 @@ function renderSearchResults() {
     button.className = "search-result";
     button.type = "button";
     button.innerHTML = `
-      <strong>${escapeHTML(result.subjectName)} / ${escapeHTML(result.sessionTitle)}</strong>
+      <strong>${escapeHTML(result.workspaceName)} / ${escapeHTML(result.subjectName)} / ${escapeHTML(result.sessionTitle)}</strong>
       <span>${escapeHTML(result.source)}</span>
       <small>${escapeHTML(result.snippet)}</small>
     `;
     button.addEventListener("click", () => {
       searchDialog.close();
-      selectSession(result.subjectId, result.sessionId);
+      openSearchResult(result, query);
     });
     searchResultsElement.append(button);
   }
 }
 
-function searchWorkspace(query) {
-  const workspace = getActiveWorkspace();
+function searchLibrary(query, includeAllWorkspaces = false) {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (!workspace || !terms.length) return [];
+  const workspaces = includeAllWorkspaces ? library.workspaces : [getActiveWorkspace()];
+  if (!terms.length) return [];
 
   const results = [];
-  for (const subject of workspace.subjects ?? []) {
-    for (const session of subject.sessions ?? []) {
-      const fields = collectSearchFields(session);
-      for (const field of fields) {
-        const haystack = field.text.toLowerCase();
-        if (!terms.every((term) => haystack.includes(term))) continue;
-        results.push({
-          subjectId: subject.id,
-          subjectName: subject.name,
-          sessionId: session.id,
-          sessionTitle: session.title,
-          source: field.source,
-          snippet: createSearchSnippet(field.text, terms[0])
-        });
-        break;
+  for (const workspace of workspaces.filter(Boolean)) {
+    for (const subject of workspace.subjects ?? []) {
+      for (const session of subject.sessions ?? []) {
+        const fields = collectSearchFields(session);
+        for (const field of fields) {
+          const haystack = field.text.toLowerCase();
+          if (!terms.every((term) => haystack.includes(term))) continue;
+          results.push({
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+            subjectId: subject.id,
+            subjectName: subject.name,
+            sessionId: session.id,
+            sessionTitle: session.title,
+            source: field.source,
+            kind: field.kind,
+            languageCode: field.languageCode ?? "",
+            snippet: createSearchSnippet(field.text, terms[0])
+          });
+          break;
+        }
       }
     }
   }
@@ -3804,23 +3888,79 @@ function searchWorkspace(query) {
 
 function collectSearchFields(session) {
   const fields = [];
-  if (session.title) fields.push({ source: t("defaultSessionPrefix"), text: session.title });
-  if (session.notes?.trim()) fields.push({ source: t("notesTitle"), text: session.notes });
+  for (const segment of session.segments ?? []) {
+    if (segment.text?.trim()) fields.push({ source: t("originalTab"), kind: "segment", languageCode: "original", text: segment.text });
+  }
+  if (session.title) fields.push({ source: t("defaultSessionPrefix"), kind: "title", text: session.title });
   for (const bookmark of getSessionBookmarks(session)) {
     const text = `${formatBookmarkTime(bookmark)} ${bookmark.title} ${bookmark.snippet}`.trim();
-    if (text) fields.push({ source: t("bookmarksTitle"), text });
+    if (text) fields.push({ source: t("bookmarksTitle"), kind: "bookmark", text });
   }
-  for (const segment of session.segments ?? []) {
-    if (segment.text?.trim()) fields.push({ source: t("originalTab"), text: segment.text });
-  }
+  if (session.notes?.trim()) fields.push({ source: t("notesTitle"), kind: "notes", text: session.notes });
   for (const [languageCode, translation] of Object.entries(session.translations ?? {})) {
-    if (translation?.trim()) fields.push({ source: getLanguageLabel(languageCode), text: translation });
+    if (translation?.trim()) {
+      fields.push({ source: getLanguageLabel(languageCode), kind: "translation", languageCode, text: translation });
+    }
   }
   for (const [summaryKey, summary] of Object.entries(getSessionSummaries(session))) {
     if (isReservedSummaryKey(summaryKey)) continue;
-    if (summary?.trim()) fields.push({ source: formatSummaryExportLabel(summaryKey), text: summary });
+    if (summary?.trim()) fields.push({ source: formatSummaryExportLabel(summaryKey), kind: "summary", text: summary });
   }
   return fields;
+}
+
+function openSearchResult(result, query) {
+  if (isListening) {
+    showError(t("stopBeforeSwitch"));
+    return;
+  }
+  const location = findSubjectLocation(result.subjectId);
+  if (location?.subject) location.subject.collapsed = false;
+  const session = location?.subject?.sessions?.find((item) => item.id === result.sessionId);
+  const highlightTarget = getSearchHighlightTarget(session, result, query);
+  library.activeWorkspaceId = result.workspaceId;
+  library.activeSubjectId = result.subjectId;
+  library.activeSessionId = result.sessionId;
+  activeTranscriptTab = highlightTarget?.tab ?? "original";
+  isTranscriptFolded = false;
+  activeSearchHighlight = highlightTarget ? { sessionId: result.sessionId, query, tab: highlightTarget.tab } : undefined;
+  translatingTo = "";
+  clearError();
+  flushLocalLibrarySave();
+  renderAll();
+  window.setTimeout(scrollToSearchHighlight, 50);
+}
+
+function getSearchHighlightTarget(session, result, query) {
+  if (!session) return undefined;
+  if (result.kind === "segment" && sessionHasOriginalTranscriptMatch(session, query)) return { tab: "original" };
+  if (result.kind === "translation") {
+    const languageCode = normalizeLanguageCode(result.languageCode);
+    if (languageCode && textMatchesSearch(session.translations?.[languageCode], query)) return { tab: languageCode };
+  }
+  if (sessionHasOriginalTranscriptMatch(session, query)) return { tab: "original" };
+  for (const [languageCode, translation] of Object.entries(session.translations ?? {})) {
+    const normalizedLanguageCode = normalizeLanguageCode(languageCode);
+    if (normalizedLanguageCode && textMatchesSearch(translation, query)) return { tab: normalizedLanguageCode };
+  }
+  return undefined;
+}
+
+function sessionHasOriginalTranscriptMatch(session, query) {
+  return (session?.segments ?? []).some((segment) => textMatchesSearch(segment.text, query));
+}
+
+function textMatchesSearch(text, query) {
+  const terms = String(query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return false;
+  const haystack = String(text ?? "").toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+function scrollToSearchHighlight() {
+  const highlight = transcriptElement.querySelector(".search-highlight");
+  if (!highlight) return;
+  highlight.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
 function createSearchSnippet(text, term) {
@@ -3830,6 +3970,23 @@ function createSearchSnippet(text, term) {
   const start = Math.max(0, index - 70);
   const end = Math.min(compact.length, index + term.length + 110);
   return `${start ? "..." : ""}${compact.slice(start, end)}${end < compact.length ? "..." : ""}`;
+}
+
+function renderSearchHighlightedText(text, query) {
+  const value = String(text ?? "");
+  const terms = String(query ?? "").trim().split(/\s+/).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!terms.length) return escapeHTML(value);
+  const expression = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
+  let html = "";
+  let cursor = 0;
+  for (const match of value.matchAll(expression)) {
+    const index = match.index ?? 0;
+    html += escapeHTML(value.slice(cursor, index));
+    html += `<mark class="search-highlight">${escapeHTML(match[0])}</mark>`;
+    cursor = index + match[0].length;
+  }
+  html += escapeHTML(value.slice(cursor));
+  return html;
 }
 
 async function clearTranscript() {
@@ -4162,6 +4319,10 @@ function escapeHTML(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function escapeRegExp(value) {
+  return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeSummaries(value, legacySummary = "", legacyLanguage = "") {

@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./assets/app-icon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=90">
+    <link rel="stylesheet" href="./styles.css?v=107">
     <title>LectureHelper</title>
   </head>
   <body>
@@ -36,6 +36,7 @@
           <div class="workspace-bar">
             <button id="active-workspace-title" class="workspace-title" type="button">My Workspace</button>
             <button id="load-workspace" class="small-button" type="button">Load</button>
+            <button id="search-workspace" class="small-button workspace-search-button" type="button">Search</button>
           </div>
         </div>
         <div id="course-tree" class="course-tree"></div>
@@ -59,7 +60,6 @@
             <button id="bookmark-current" class="action-button secondary-action" type="button">⚑ Mark</button>
             <button id="copy-all" class="action-button secondary-action" type="button">⧉ Copy</button>
             <button id="export-session" class="action-button secondary-action" type="button">⇩ Export</button>
-            <button id="search-workspace" class="action-button secondary-action" type="button">⌕ Search</button>
             <button id="clear" class="action-button secondary-action" type="button">× Clear</button>
           </div>
         </div>
@@ -265,6 +265,10 @@
       <form method="dialog" class="modal-card">
         <h2 id="search-title">Search workspace</h2>
         <input id="search-input" class="modal-input" type="search" autocomplete="off" placeholder="Search all lectures...">
+        <label class="toggle-row search-scope-row">
+          <input id="search-all-workspaces" type="checkbox">
+          <span id="search-all-workspaces-label">Search all workspaces</span>
+        </label>
         <div id="search-results" class="search-results"></div>
         <div class="modal-actions">
           <button id="search-close" class="primary-button" type="button">Close</button>
@@ -281,6 +285,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./app.js?v=90"></script>
+    <script type="module" src="./app.js?v=107"></script>
   </body>
 </html>

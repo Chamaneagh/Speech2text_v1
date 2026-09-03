@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 844" role="img" aria-labelledby="title">
+  <title>LectureHelper mobile translation mock screenshot</title>
+  <rect width="390" height="844" rx="42" fill="#020617"/>
+  <rect x="18" y="18" width="354" height="808" rx="34" fill="#071122" stroke="#1e3a5f"/>
+  <text x="42" y="88" fill="#f8fafc" font-family="Arial, sans-serif" font-size="28" font-weight="900">Transcript</text>
+  <rect x="42" y="126" width="306" height="66" rx="16" fill="#0f172a" stroke="#334155"/>
+  <rect x="56" y="140" width="86" height="38" rx="10" fill="#2563eb"/>
+  <text x="74" y="164" fill="#fff" font-family="Arial, sans-serif" font-size="14" font-weight="800">Original</text>
+  <rect x="152" y="140" width="54" height="38" rx="10" fill="#1e293b"/>
+  <text x="168" y="164" fill="#dbeafe" font-family="Arial, sans-serif" font-size="14" font-weight="800">EN</text>
+  <rect x="216" y="140" width="54" height="38" rx="10" fill="#1e293b"/>
+  <text x="232" y="164" fill="#dbeafe" font-family="Arial, sans-serif" font-size="14" font-weight="800">FR</text>
+  <rect x="280" y="140" width="54" height="38" rx="10" fill="#1e293b"/>
+  <text x="296" y="164" fill="#dbeafe" font-family="Arial, sans-serif" font-size="14" font-weight="800">DE</text>
+  <rect x="42" y="220" width="306" height="224" rx="18" fill="#020617" stroke="#334155"/>
+  <text x="64" y="272" fill="#f8fafc" font-family="Arial, sans-serif" font-size="19">Original text remains</text>
+  <text x="64" y="310" fill="#f8fafc" font-family="Arial, sans-serif" font-size="19">available at any time.</text>
+  <text x="64" y="366" fill="#94a3b8" font-family="Arial, sans-serif" font-size="17">The source is never</text>
+  <text x="64" y="400" fill="#94a3b8" font-family="Arial, sans-serif" font-size="17">overwritten.</text>
+  <rect x="42" y="472" width="306" height="224" rx="18" fill="#020617" stroke="#2563eb"/>
+  <text x="64" y="524" fill="#f8fafc" font-family="Arial, sans-serif" font-size="19">Le texte traduit vit</text>
+  <text x="64" y="562" fill="#f8fafc" font-family="Arial, sans-serif" font-size="19">dans son propre onglet.</text>
+  <text x="64" y="618" fill="#94a3b8" font-family="Arial, sans-serif" font-size="17">Revenez à l'original</text>
+  <text x="64" y="652" fill="#94a3b8" font-family="Arial, sans-serif" font-size="17">quand vous voulez.</text>
+</svg>

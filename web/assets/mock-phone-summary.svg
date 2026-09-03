@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 844" role="img" aria-labelledby="title">
+  <title>LectureHelper mobile summary mock screenshot</title>
+  <rect width="390" height="844" rx="42" fill="#020617"/>
+  <rect x="18" y="18" width="354" height="808" rx="34" fill="#071122" stroke="#1e3a5f"/>
+  <text x="42" y="88" fill="#f8fafc" font-family="Arial, sans-serif" font-size="30" font-weight="900">Summary</text>
+  <text x="42" y="118" fill="#64748b" font-family="Arial, sans-serif" font-size="15">Generated summary · Student</text>
+  <rect x="42" y="146" width="70" height="42" rx="10" fill="#2563eb"/>
+  <text x="62" y="172" fill="#fff" font-family="Arial, sans-serif" font-size="14" font-weight="800">EN</text>
+  <rect x="124" y="146" width="70" height="42" rx="10" fill="#1e293b"/>
+  <text x="144" y="172" fill="#dbeafe" font-family="Arial, sans-serif" font-size="14" font-weight="800">FR</text>
+  <rect x="206" y="146" width="70" height="42" rx="10" fill="#1e293b"/>
+  <text x="226" y="172" fill="#dbeafe" font-family="Arial, sans-serif" font-size="14" font-weight="800">DE</text>
+  <rect x="288" y="146" width="60" height="42" rx="10" fill="#1e293b"/>
+  <text x="304" y="172" fill="#dbeafe" font-family="Arial, sans-serif" font-size="14" font-weight="800">⚙</text>
+  <rect x="42" y="216" width="306" height="480" rx="18" fill="#020617" stroke="#334155"/>
+  <text x="64" y="270" fill="#f8fafc" font-family="Arial, sans-serif" font-size="24" font-weight="900">Study sheet</text>
+  <text x="64" y="326" fill="#bfdbfe" font-family="Arial, sans-serif" font-size="19" font-weight="800">Main ideas</text>
+  <text x="64" y="370" fill="#e5edf8" font-family="Arial, sans-serif" font-size="17">- Symmetry organizes</text>
+  <text x="82" y="400" fill="#e5edf8" font-family="Arial, sans-serif" font-size="17">architectural meaning.</text>
+  <text x="64" y="448" fill="#e5edf8" font-family="Arial, sans-serif" font-size="17">- Examples connect</text>
+  <text x="82" y="478" fill="#e5edf8" font-family="Arial, sans-serif" font-size="17">the lecture to exams.</text>
+  <text x="64" y="534" fill="#bfdbfe" font-family="Arial, sans-serif" font-size="19" font-weight="800">Vocabulary</text>
+  <text x="64" y="578" fill="#e5edf8" font-family="Arial, sans-serif" font-size="17">Facade, axis, rhythm,</text>
+  <text x="64" y="608" fill="#e5edf8" font-family="Arial, sans-serif" font-size="17">composition.</text>
+</svg>

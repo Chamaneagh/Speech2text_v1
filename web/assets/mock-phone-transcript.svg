@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 844" role="img" aria-labelledby="title">
+  <title>LectureHelper mobile transcript mock screenshot</title>
+  <rect width="390" height="844" rx="42" fill="#020617"/>
+  <rect x="18" y="18" width="354" height="808" rx="34" fill="#071122" stroke="#1e3a5f"/>
+  <text x="42" y="88" fill="#93c5fd" font-family="Arial, sans-serif" font-size="12" font-weight="900" letter-spacing="3">ARCHITECTURE</text>
+  <text x="42" y="128" fill="#f8fafc" font-family="Arial, sans-serif" font-size="34" font-weight="900">Symmetry</text>
+  <rect x="42" y="164" width="104" height="48" rx="12" fill="#2563eb"/>
+  <text x="74" y="194" fill="#fff" font-family="Arial, sans-serif" font-size="17" font-weight="900">Rec</text>
+  <rect x="158" y="164" width="82" height="48" rx="12" fill="#1e293b"/>
+  <text x="181" y="194" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="15" font-weight="800">Mark</text>
+  <rect x="252" y="164" width="82" height="48" rx="12" fill="#1e293b"/>
+  <text x="276" y="194" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="15" font-weight="800">Copy</text>
+  <rect x="42" y="242" width="306" height="444" rx="18" fill="#020617" stroke="#334155"/>
+  <rect x="62" y="264" width="94" height="36" rx="10" fill="#2563eb"/>
+  <text x="82" y="287" fill="#fff" font-family="Arial, sans-serif" font-size="14" font-weight="800">Original</text>
+  <rect x="166" y="264" width="48" height="36" rx="10" fill="#1e293b"/>
+  <text x="180" y="287" fill="#dbeafe" font-family="Arial, sans-serif" font-size="14" font-weight="800">FR</text>
+  <text x="64" y="344" fill="#f8fafc" font-family="Arial, sans-serif" font-size="20">The symmetry of a</text>
+  <text x="64" y="382" fill="#f8fafc" font-family="Arial, sans-serif" font-size="20">building is not only</text>
+  <text x="64" y="420" fill="#f8fafc" font-family="Arial, sans-serif" font-size="20">decorative. It helps</text>
+  <text x="64" y="458" fill="#f8fafc" font-family="Arial, sans-serif" font-size="20">people understand</text>
+  <text x="64" y="496" fill="#f8fafc" font-family="Arial, sans-serif" font-size="20">the structure.</text>
+  <text x="64" y="610" fill="#93c5fd" font-family="Arial, sans-serif" font-size="18" font-style="italic">Live words continue here...</text>
+</svg>
