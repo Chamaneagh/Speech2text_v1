@@ -34,15 +34,16 @@
           <span id="course-panel-current">Lecture</span>
         </button>
         <div class="sidebar-header">
-          <h2 id="sidebar-title">Courses</h2>
+          <h2 class="workspace-heading">
+            <span id="sidebar-title">Workspace:</span>
+            <button id="active-workspace-title" class="workspace-title" type="button">My Workspace</button>
+          </h2>
           <div class="sidebar-add-actions">
             <button id="add-workspace" class="add-link" type="button">Workspace</button>
             <button id="add-course" class="add-link" type="button">Course</button>
             <button id="add-session" class="add-link" type="button">Lecture</button>
           </div>
-          <button id="course-panel-toggle" class="panel-toggle-button" type="button">▴</button>
-          <div class="workspace-bar">
-            <button id="active-workspace-title" class="workspace-title" type="button">My Workspace</button>
+          <div class="workspace-tools">
             <button id="load-workspace" class="small-button" type="button">Load</button>
             <button id="search-workspace" class="small-button workspace-search-button" type="button" title="Search" aria-label="Search">
               <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
@@ -51,6 +52,7 @@
               </svg>
             </button>
           </div>
+          <button id="course-panel-toggle" class="panel-toggle-button" type="button">▴</button>
         </div>
         <div id="course-tree" class="course-tree"></div>
       </aside>

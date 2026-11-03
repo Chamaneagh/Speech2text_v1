@@ -52,7 +52,7 @@ const SUMMARY_PROFILES = [
 ];
 const UI_STRINGS = {
   en: {
-    sidebarTitle: "Workspace",
+    sidebarTitle: "Workspace:",
     interfaceLanguage: "Language",
     newWorkspace: "New workspace",
     loadWorkspace: "Load",
@@ -304,7 +304,7 @@ const UI_STRINGS = {
     syncCloudLoaded: "Cloud library loaded."
   },
   fr: {
-    sidebarTitle: "Workspace",
+    sidebarTitle: "Workspace :",
     interfaceLanguage: "Langue",
     newWorkspace: "Nouveau workspace",
     loadWorkspace: "Charger",

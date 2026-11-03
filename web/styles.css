@@ -142,18 +142,28 @@ button { font: inherit; }
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 14px;
-  padding: 0;
+  padding: 0 0 12px;
+  border-bottom: 1px solid rgba(147, 197, 253, .16);
   flex-wrap: wrap;
 }
 
 .sidebar-header h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   flex: 1;
-  min-width: 0;
+  min-width: min(14rem, 100%);
   margin: 0;
   color: #f8fafc;
   font-size: 1.08rem;
   font-weight: 700;
-  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.workspace-tools {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
 .panel-toggle-button {
@@ -229,26 +239,15 @@ button { font: inherit; }
   min-width: 0;
 }
 
-.workspace-bar {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin-top: 2px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(147, 197, 253, .16);
-}
-
 .workspace-title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  min-height: 34px;
+  min-height: 0;
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: #dbeafe;
-  font-size: .9rem;
+  color: #93c5fd;
+  font-size: inherit;
   font-weight: 700;
   text-align: left;
   overflow: hidden;
@@ -1688,10 +1687,6 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .workspace-bar {
-    min-width: 0;
-  }
-
   .subject-row,
   .session-row {
     gap: 5px;
@@ -1900,14 +1895,21 @@ button:disabled { cursor: not-allowed; opacity: .65; }
   }
 
   .sidebar-header h2 {
-    display: none;
-  }
-
-  .sidebar-add-actions {
-    margin-left: -8px;
+    flex: 1 1 calc(100% - 40px);
+    font-size: 1rem;
   }
 
   .panel-toggle-button {
+    order: 1;
+  }
+
+  .sidebar-add-actions {
+    order: 2;
+    margin-left: -8px;
+  }
+
+  .workspace-tools {
+    order: 3;
     margin-left: auto;
   }
 
@@ -1918,12 +1920,7 @@ button:disabled { cursor: not-allowed; opacity: .65; }
     font-size: .82rem;
   }
 
-  .workspace-bar {
-    gap: 6px;
-  }
-
-  .small-button,
-  .workspace-title {
+  .small-button {
     min-height: 32px;
   }
 
