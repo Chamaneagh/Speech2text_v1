@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-family: "Atkinson Hyperlegible Next", -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif;
   background: #050816;
   color: #f8fafc;
 }
@@ -18,9 +18,15 @@ body {
   color: #f8fafc;
 }
 
-body[data-lang="fr"] [data-lang-panel="en"],
-body[data-lang="en"] [data-lang-panel="fr"] {
+body:not([data-lang="en"]) [data-lang-panel="en"],
+body:not([data-lang="fr"]) [data-lang-panel="fr"],
+body:not([data-lang="de"]) [data-lang-panel="de"],
+body:not([data-lang="ja"]) [data-lang-panel="ja"] {
   display: none;
+}
+
+body[data-lang="ja"] {
+  line-break: strict;
 }
 
 a {
@@ -115,8 +121,7 @@ button {
   font-weight: 800;
 }
 
-body[data-lang="en"] [data-set-lang="en"],
-body[data-lang="fr"] [data-set-lang="fr"] {
+.lang-toggle button[aria-pressed="true"] {
   background: #2563eb;
   color: #fff;
 }
@@ -170,10 +175,8 @@ body[data-lang="fr"] [data-set-lang="fr"] {
 .eyebrow {
   margin: 0;
   color: #93c5fd;
-  font-size: .78rem;
-  font-weight: 900;
-  letter-spacing: .16em;
-  text-transform: uppercase;
+  font-size: .95rem;
+  font-weight: 700;
 }
 
 h1,
@@ -286,7 +289,6 @@ h1 {
 }
 
 .feature {
-  min-height: 166px;
   padding: 18px;
   border: 1px solid rgba(148, 163, 184, .16);
   border-radius: 12px;
@@ -589,12 +591,17 @@ h1 {
   }
 
   .brand span {
-    max-width: 38vw;
+    display: none;
+  }
+
+  .lang-toggle button {
+    min-width: 32px;
   }
 
   .app-link {
     padding: 0 10px;
     font-size: .82rem;
+    white-space: nowrap;
   }
 
   .site-hero {

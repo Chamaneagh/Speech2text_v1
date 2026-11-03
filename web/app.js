@@ -6,6 +6,8 @@ const SUMMARY_ENDPOINT = "https://speech2text-broker.onrender.com/api/summarize"
 const SPEECH_ENDPOINT = "https://speech2text-broker.onrender.com/api/speech";
 const ADMIN_ME_ENDPOINT = "https://speech2text-broker.onrender.com/api/admin/me";
 const ADMIN_USERS_ENDPOINT = "https://speech2text-broker.onrender.com/api/admin/users";
+const APP_URL = new URL("./app.html", window.location.href).href;
+const FLAG_FILES = { en: "gb", ja: "jp" };
 const SUPABASE_URL = "https://jjdcjuxeuxbnxggxzbsl.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_81wK9xZIlCC9CBukLWIu-g_yx851dCK";
 const MODEL = "gemini-3.5-transcribe-live";
@@ -62,10 +64,11 @@ const UI_STRINGS = {
     textSizeSmall: "Small text",
     textSizeMedium: "Medium text",
     textSizeLarge: "Large text",
-    newCourse: "Add Course",
-    newSession: "Add",
+    addWorkspaceShort: "Workspace",
+    newCourse: "Course",
+    newSession: "Lecture",
     addCourseTooltip: "Add a course to this workspace",
-    addSessionTooltip: "Add a lecture to this course",
+    addSessionTooltip: "Add a lecture to the current course",
     defaultWorkspace: "My Workspace",
     defaultSubject: "Courses",
     defaultSessionPrefix: "Lecture",
@@ -134,7 +137,8 @@ const UI_STRINGS = {
     foldSummary: "Collapse summary",
     unfoldSummary: "Show summary",
     foldedSummary: "{label} summary · {count} characters",
-    empty: "The lecture transcript will appear here.",
+    empty: "Press Rec to transcribe the lecture live.",
+    emptyListening: "Listening… the first words will appear in a few seconds.",
     emptyTranslation: "Choose a language to generate a translation.",
     detectedUnknown: "Detected language: unknown",
     detectedMixed: "Detected language: mixed",
@@ -223,6 +227,11 @@ const UI_STRINGS = {
     emptyToken: "The connection token is empty.",
     connectFailed: "The connection could not be established.",
     unsupportedMic: "This browser does not allow microphone access.",
+    insecureMic: "Microphone access requires HTTPS. Open the secure site URL.",
+    micPermissionDenied: "Microphone permission was denied. Allow the microphone in the browser settings, then try again.",
+    micNotFound: "No microphone was found on this device.",
+    micStartFailed: "Microphone could not start: {message}",
+    micPermissionRequested: "Requesting microphone permission.",
     audioEnd: "Audio end sent. Final wait: {ms} ms.",
     finalized: "Finalization complete.",
     micActive: "Microphone active: {inputRate} Hz -> {outputRate} Hz.",
@@ -246,7 +255,7 @@ const UI_STRINGS = {
     copyDate: "Copied on {date}",
     localMode: "Local mode",
     signedInAs: "Signed in as {email}",
-    signIn: "Sign-in",
+    signIn: "Sign in",
     signOut: "Sign out",
     signUp: "Create account",
     authSignInTitle: "Sign in",
@@ -256,7 +265,7 @@ const UI_STRINGS = {
     authEmail: "Email",
     authPassword: "Password",
     authSwitchToSignUp: "Create account",
-    authSwitchToSignIn: "Sign-in",
+    authSwitchToSignIn: "I already have an account",
     authSubmitSignIn: "Sign in",
     authSubmitSignUp: "Create account",
     authResetPassword: "Forgot password?",
@@ -307,10 +316,11 @@ const UI_STRINGS = {
     textSizeSmall: "Petit texte",
     textSizeMedium: "Texte moyen",
     textSizeLarge: "Grand texte",
-    newCourse: "Add Course",
-    newSession: "Add",
+    addWorkspaceShort: "Workspace",
+    newCourse: "Cours",
+    newSession: "Séance",
     addCourseTooltip: "Ajouter un cours dans ce workspace",
-    addSessionTooltip: "Ajouter une séance dans ce cours",
+    addSessionTooltip: "Ajouter une séance au cours actuel",
     defaultWorkspace: "Mon workspace",
     defaultSubject: "Cours",
     defaultSessionPrefix: "Cours",
@@ -379,7 +389,8 @@ const UI_STRINGS = {
     foldSummary: "Replier la fiche",
     unfoldSummary: "Afficher la fiche",
     foldedSummary: "Fiche {label} · {count} caractères",
-    empty: "Les paroles du professeur apparaîtront ici.",
+    empty: "Appuie sur Rec pour transcrire le cours en direct.",
+    emptyListening: "Écoute en cours… les premiers mots apparaissent dans quelques secondes.",
     emptyTranslation: "Choisis une langue pour générer une traduction.",
     detectedUnknown: "Langue détectée: inconnue",
     detectedMixed: "Langue détectée: mixte",
@@ -468,6 +479,11 @@ const UI_STRINGS = {
     emptyToken: "Le jeton de connexion est vide.",
     connectFailed: "La connexion n’a pas pu être établie.",
     unsupportedMic: "Ce navigateur ne permet pas l’accès au microphone.",
+    insecureMic: "L’accès au micro nécessite HTTPS. Ouvre l’adresse sécurisée du site.",
+    micPermissionDenied: "L’autorisation du micro a été refusée. Autorise le micro dans les réglages du navigateur, puis réessaie.",
+    micNotFound: "Aucun microphone n’a été trouvé sur cet appareil.",
+    micStartFailed: "Le micro n’a pas pu démarrer: {message}",
+    micPermissionRequested: "Demande d’autorisation du micro.",
     audioEnd: "Fin d'audio envoyée. Attente finale: {ms} ms.",
     finalized: "Finalisation terminée.",
     micActive: "Micro actif: {inputRate} Hz -> {outputRate} Hz.",
@@ -564,6 +580,9 @@ const coursePanelSummaryButton = document.querySelector("#course-panel-summary")
 const coursePanelArrowElement = document.querySelector("#course-panel-arrow");
 const coursePanelCurrentElement = document.querySelector("#course-panel-current");
 const newWorkspaceButton = document.querySelector("#new-workspace");
+const addWorkspaceButton = document.querySelector("#add-workspace");
+const addCourseButton = document.querySelector("#add-course");
+const addSessionButton = document.querySelector("#add-session");
 const loadWorkspaceButton = document.querySelector("#load-workspace");
 const activeWorkspaceTitleElement = document.querySelector("#active-workspace-title");
 const interfaceLanguageButtons = [...document.querySelectorAll("[data-interface-language]")];
@@ -773,6 +792,11 @@ textSizeLargeButton.addEventListener("click", () => setTextSize("large"));
 coursePanelToggleButton.addEventListener("click", () => setCoursePanelCollapsed(true));
 coursePanelSummaryButton.addEventListener("click", () => setCoursePanelCollapsed(false));
 newWorkspaceButton.addEventListener("click", openWorkspaceDialog);
+addWorkspaceButton.addEventListener("click", openWorkspaceDialog);
+addCourseButton.addEventListener("click", () => openSubjectDialog(library.activeWorkspaceId));
+addSessionButton.addEventListener("click", () => {
+  if (getActiveSubject()) createSession(getActiveSubject().id);
+});
 loadWorkspaceButton.addEventListener("click", openWorkspaceSwitcher);
 workspaceCloseButton.addEventListener("click", () => workspaceDialog.close());
 attachRenameTrigger(activeWorkspaceTitleElement, (event) => {
@@ -837,7 +861,6 @@ async function startSession() {
   setRecordingLayout(true);
   setStatus(t("microphonePrompt"), "connecting");
   showActivity(t("microphonePrompt"));
-  await requestScreenWakeLock();
 
   try {
     await startAudioCapture();
@@ -845,6 +868,7 @@ async function startSession() {
     setStatus(t("connecting"), "connecting");
     const token = await requestToken();
     await openSocket(token);
+    await requestScreenWakeLock();
     flushQueuedAudio();
     isListening = true;
     recordingStartedAt = Date.now();
@@ -916,6 +940,7 @@ function resetControls() {
   renderLibrary();
   renderSegments();
   renderTranscriptTabs();
+  renderSummary();
 }
 
 function setRecordingLayout(isRecording) {
@@ -1083,15 +1108,24 @@ function openSocket(token) {
 }
 
 async function startAudioCapture() {
+  if (!window.isSecureContext) {
+    throw new Error(t("insecureMic"));
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error(t("unsupportedMic"));
   }
 
-  mediaStream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-  });
-  audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
-  await audioContext.resume();
+  addDiagnostic(t("micPermissionRequested"));
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+  } catch (error) {
+    throw new Error(formatMicrophoneError(error));
+  }
+
+  audioContext = createAudioContext();
+  if (audioContext.state !== "running") await audioContext.resume();
   audioSource = audioContext.createMediaStreamSource(mediaStream);
   processor = audioContext.createScriptProcessor(4096, 1, 1);
   silentOutput = audioContext.createGain();
@@ -1111,6 +1145,27 @@ async function startAudioCapture() {
   processor.connect(silentOutput);
   silentOutput.connect(audioContext.destination);
   addDiagnostic(t("micActive", { inputRate: audioContext.sampleRate, outputRate: TARGET_SAMPLE_RATE }));
+}
+
+function createAudioContext() {
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextConstructor) throw new Error(t("unsupportedMic"));
+  try {
+    return new AudioContextConstructor({ sampleRate: TARGET_SAMPLE_RATE });
+  } catch {
+    return new AudioContextConstructor();
+  }
+}
+
+function formatMicrophoneError(error) {
+  const name = error?.name ?? "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") return t("micPermissionDenied");
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") return t("micNotFound");
+  if (name === "SecurityError") return t("insecureMic");
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return t("micStartFailed", { message: error?.message || name });
+  }
+  return t("micStartFailed", { message: error?.message || name || t("unsupportedMic") });
 }
 
 async function cleanupAudio() {
@@ -1199,6 +1254,7 @@ function handleMessage(message) {
     appendTranscriptSegment(segment);
     saveLibrary({ defer: true });
     renderTranscriptTabs();
+    renderSummary();
     stopWaiter?.();
   }
 
@@ -1335,25 +1391,6 @@ function selectSession(subjectId, sessionId) {
   renderAll();
 }
 
-async function handleSessionRecord(subjectId, sessionId) {
-  const isActiveSession = subjectId === library.activeSubjectId && sessionId === library.activeSessionId;
-  if (isListening) {
-    if (isActiveSession) await stopSession();
-    else showError(t("stopBeforeSwitch"));
-    return;
-  }
-
-  const location = findSubjectLocation(subjectId);
-  if (!location) return;
-  library.activeWorkspaceId = location.workspace.id;
-  library.activeSubjectId = subjectId;
-  library.activeSessionId = sessionId;
-  clearError();
-  saveLibrary();
-  renderAll();
-  await startSession();
-}
-
 function renderAll() {
   ensureActiveSession();
   renderInterfaceText();
@@ -1373,6 +1410,15 @@ function renderInterfaceText() {
   sidebarTitleElement.textContent = t("sidebarTitle");
   for (const label of interfaceLanguageLabelElements) label.textContent = t("interfaceLanguage");
   newWorkspaceButton.textContent = t("newWorkspace");
+  for (const [button, label, tooltip] of [
+    [addWorkspaceButton, "addWorkspaceShort", "newWorkspace"],
+    [addCourseButton, "newCourse", "addCourseTooltip"],
+    [addSessionButton, "newSession", "addSessionTooltip"]
+  ]) {
+    button.textContent = t(label);
+    button.title = t(tooltip);
+    button.setAttribute("aria-label", t(tooltip));
+  }
   loadWorkspaceButton.textContent = t("loadWorkspace");
   workspaceDialogTitleElement.textContent = t("loadWorkspaceTitle");
   activeWorkspaceTitleElement.title = t("rename");
@@ -1382,7 +1428,12 @@ function renderInterfaceText() {
   bookmarkCurrentButton.setAttribute("aria-label", t("bookmarkTooltip"));
   setActionButton(copyAllButton, "⧉", t("copyAllShort"));
   setActionButton(exportSessionButton, "⇩", t("exportSession"));
-  searchWorkspaceButton.textContent = `⌕ ${t("searchWorkspace")}`;
+  searchWorkspaceButton.innerHTML = `
+    <svg class="button-icon" aria-hidden="true" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="7"></circle>
+      <path d="m16.5 16.5 4 4"></path>
+    </svg>
+  `;
   searchWorkspaceButton.title = t("searchWorkspace");
   searchWorkspaceButton.setAttribute("aria-label", t("searchWorkspace"));
   setActionButton(clearButton, "⌫", t("clearShort"));
@@ -1466,8 +1517,14 @@ function renderInterfaceText() {
 function renderCoursePanelState() {
   const subject = getActiveSubject();
   const session = getActiveSession();
-  const label = [subject?.name, session?.title].filter(Boolean).join(" / ") || t("noLectureSelected");
-  coursePanelCurrentElement.textContent = label;
+  if (session?.title) {
+    const sessionLabel = document.createElement("span");
+    sessionLabel.className = "course-panel-session";
+    sessionLabel.textContent = session.title;
+    coursePanelCurrentElement.replaceChildren(...(subject?.name ? [`${subject.name} / `] : []), sessionLabel);
+  } else {
+    coursePanelCurrentElement.textContent = subject?.name || t("noLectureSelected");
+  }
   coursePanelArrowElement.textContent = isCoursePanelCollapsed ? "▾" : "▴";
   coursePanelElement.dataset.collapsed = isCoursePanelCollapsed ? "true" : "false";
 }
@@ -1767,7 +1824,7 @@ async function handleAuthSubmit(event) {
         email,
         password,
         options: {
-          emailRedirectTo: window.location.origin
+          emailRedirectTo: APP_URL
         }
       })
     : supabase.auth.signInWithPassword({ email, password });
@@ -1798,7 +1855,7 @@ async function sendPasswordReset() {
 
   authResetButton.disabled = true;
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin
+    redirectTo: APP_URL
   });
   authResetButton.disabled = false;
   if (error) {
@@ -1822,7 +1879,7 @@ async function resendEmailConfirmation() {
     type: "signup",
     email,
     options: {
-      emailRedirectTo: window.location.origin
+      emailRedirectTo: APP_URL
     }
   });
   authResendButton.disabled = false;
@@ -2096,23 +2153,17 @@ function renderLibrary() {
 
   restoreInlineEditTarget(activeWorkspaceTitleElement);
   activeWorkspaceTitleElement.textContent = workspace?.name ?? t("defaultWorkspace");
+  addSessionButton.disabled = !workspace?.subjects.length;
   if (!workspace) return;
 
-  const addSubjectButton = document.createElement("button");
-  addSubjectButton.className = "course-add-button";
-  addSubjectButton.type = "button";
-  addSubjectButton.textContent = t("newCourse");
-  addSubjectButton.title = t("addCourseTooltip");
-  addSubjectButton.setAttribute("aria-label", t("addCourseTooltip"));
-  addSubjectButton.addEventListener("click", () => openSubjectDialog(workspace.id));
-  courseTreeElement.append(addSubjectButton);
-
+  const activeSubjectId = getActiveSubject()?.id;
   for (const [subjectIndex, subject] of workspace.subjects.entries()) {
     const subjectBlock = document.createElement("section");
     subjectBlock.className = "subject-block";
 
     const subjectHeader = document.createElement("div");
     subjectHeader.className = "subject-row";
+    subjectHeader.dataset.active = subject.id === activeSubjectId ? "true" : "false";
 
     const toggle = document.createElement("button");
     toggle.className = "subject-toggle";
@@ -2163,6 +2214,7 @@ function renderLibrary() {
     for (const [sessionIndex, session] of subject.sessions.entries()) {
       const sessionRow = document.createElement("div");
       sessionRow.className = "session-row";
+      sessionRow.dataset.active = session.id === library.activeSessionId ? "true" : "false";
 
       const button = document.createElement("button");
       button.className = "session-button";
@@ -2170,27 +2222,15 @@ function renderLibrary() {
       button.textContent = session.title;
       button.title = t("rename");
       button.dataset.active = session.id === library.activeSessionId ? "true" : "false";
+      button.dataset.recording = isListening && session.id === library.activeSessionId ? "true" : "false";
       button.addEventListener("click", () => scheduleSessionSelect(subject.id, session.id));
       attachRenameTrigger(button, (event) => {
         event?.stopPropagation();
         window.clearTimeout(pendingSessionSelect);
         startInlineEdit(button, session.title, (title) => renameSession(subject.id, session.id, title));
       });
-      const sessionRecordButton = document.createElement("button");
-      const isActiveRecording = isListening && subject.id === library.activeSubjectId && session.id === library.activeSessionId;
-      sessionRecordButton.className = "session-record-button";
-      sessionRecordButton.type = "button";
-      sessionRecordButton.textContent = isActiveRecording ? t("stopShort") : t("startShort");
-      sessionRecordButton.title = isActiveRecording ? t("stop") : t("start");
-      sessionRecordButton.setAttribute("aria-label", sessionRecordButton.title);
-      sessionRecordButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        window.clearTimeout(pendingSessionSelect);
-        handleSessionRecord(subject.id, session.id);
-      });
       sessionRow.append(
         button,
-        sessionRecordButton,
         renderOrderControls({
           name: session.title,
           canMoveUp: sessionIndex > 0,
@@ -2206,34 +2246,10 @@ function renderLibrary() {
       sessionList.append(sessionRow);
     }
 
-    const addSessionRow = document.createElement("div");
-    addSessionRow.className = "session-row session-add-row";
-
-    const addSessionButton = document.createElement("button");
-    addSessionButton.className = "session-add-button";
-    addSessionButton.type = "button";
-    addSessionButton.textContent = t("newSession");
-    addSessionButton.title = t("addSessionTooltip");
-    addSessionButton.setAttribute("aria-label", t("addSessionTooltip"));
-    addSessionButton.addEventListener("click", () => createSession(subject.id));
-    addSessionRow.append(
-      addSessionButton,
-      renderSessionRowSpacer("session-record-spacer"),
-      renderSessionRowSpacer("session-order-spacer"),
-      renderSessionRowSpacer("session-delete-spacer")
-    );
-    sessionList.append(addSessionRow);
     subjectBlock.append(sessionList);
 
     courseTreeElement.append(subjectBlock);
   }
-}
-
-function renderSessionRowSpacer(className) {
-  const spacer = document.createElement("span");
-  spacer.className = className;
-  spacer.setAttribute("aria-hidden", "true");
-  return spacer;
 }
 
 function renderWorkspaceSwitcher() {
@@ -2574,7 +2590,7 @@ function renderSegments() {
   if (!segments.length && !activeInterim) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = t("empty");
+    empty.textContent = t(isListening ? "emptyListening" : "empty");
     transcriptElement.append(empty);
     return;
   }
@@ -4401,7 +4417,7 @@ function renderLanguageButton(button, languageCode, { showCode = true } = {}) {
 
   const flag = document.createElement("img");
   flag.className = "flag";
-  flag.src = `./assets/flags/${normalized === "en" ? "gb" : normalized}.svg`;
+  flag.src = `./assets/flags/${FLAG_FILES[normalized] ?? normalized}.svg`;
   flag.alt = "";
   flag.loading = "lazy";
   flag.decoding = "async";

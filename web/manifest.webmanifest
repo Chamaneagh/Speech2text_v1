@@ -1,9 +1,9 @@
 {
-  "name": "LectureHelper",
-  "short_name": "LectureHelper",
+  "name": "LectureHelp",
+  "short_name": "LectureHelp",
   "description": "Record, transcribe, translate and summarize lectures.",
   "lang": "en-US",
-  "start_url": "./",
+  "start_url": "./app.html",
   "display": "standalone",
   "background_color": "#0b1220",
   "theme_color": "#0b1220",
