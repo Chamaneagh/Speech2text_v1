@@ -246,9 +246,9 @@ button { font: inherit; }
   padding: 0;
   border-radius: 0;
   background: transparent;
-  color: #93c5fd;
-  font-size: inherit;
-  font-weight: 700;
+  color: var(--active-session-color);
+  font: inherit;
+  line-height: inherit;
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
